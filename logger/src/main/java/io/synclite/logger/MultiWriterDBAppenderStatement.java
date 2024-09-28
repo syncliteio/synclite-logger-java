@@ -71,7 +71,9 @@ public class MultiWriterDBAppenderStatement extends SyncLiteAppenderStatement {
 					if (mappedSql.contains("RENAME TO")) {
 						//Just execute rename DDL
 						super.superExecute(mappedSql);
-					} else {
+					} else if (mappedSql.contains("DROP TABLE")) { 
+						super.superExecute(mappedSql);
+					}  else {
 						String dropSql = "DROP TABLE IF EXISTS " + tableNameInDDL;				
 						super.superExecute(dropSql);
 						String createSql = SyncLiteUtils.getCreateTableSql(tableNameInDDL, afterInfo);				
@@ -125,6 +127,8 @@ public class MultiWriterDBAppenderStatement extends SyncLiteAppenderStatement {
 				synchronized(metadataDDLLock) {
 					if (mappedSql.contains("RENAME TO")) {
 						//Just execute rename DDL
+						super.superExecute(mappedSql);
+					} else if (mappedSql.contains("DROP TABLE")) { 
 						super.superExecute(mappedSql);
 					} else {
 						String dropSql = "DROP TABLE IF EXISTS " + tableNameInDDL;				

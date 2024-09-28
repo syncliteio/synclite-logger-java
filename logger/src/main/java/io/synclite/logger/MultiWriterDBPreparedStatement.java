@@ -17,6 +17,7 @@
 package io.synclite.logger;
 
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 
 import org.sqlite.SQLiteConnection;
@@ -48,7 +49,7 @@ public class MultiWriterDBPreparedStatement extends SyncLitePreparedStatement {
     			pstmt.setObject(pos+1, o);
     		}
             pstmt.addBatch();
-            pstmt.executeBatch();            
+            pstmt.executeBatch();
             
             res = false;
     	} else {
@@ -58,6 +59,14 @@ public class MultiWriterDBPreparedStatement extends SyncLitePreparedStatement {
     	return res;
     }
     
+    final protected ResultSet pStmtExecuteQuery() throws SQLException {
+		if (tableNameInDDL != null) {
+			throw new SQLException("DDL statements not permitted with executeQuery function");
+		}    	
+		ResultSet rs = pstmt.executeQuery();		
+    	return rs;
+    }
+
     @Override
     final protected void pStmtAddBatch() throws SQLException {
 		for (int pos=0; pos < paramCount; pos++) {
