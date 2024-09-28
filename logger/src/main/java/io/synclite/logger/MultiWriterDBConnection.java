@@ -160,6 +160,7 @@ public abstract class MultiWriterDBConnection extends SyncLiteConnection {
 		return new MultiWriterDBStatement(this);
 	}
 
+	@Override
 	protected final PreparedStatement connPrepareStatement(String sql) throws SQLException {
 		return new MultiWriterDBPreparedStatement(this, sql);
 	}
@@ -174,7 +175,6 @@ public abstract class MultiWriterDBConnection extends SyncLiteConnection {
 	@Override
 	final public void close() throws SQLException {
 		super.close();
-
 		if (this.cmdStager != null) {
 			this.cmdStager.cleanup();
 		}

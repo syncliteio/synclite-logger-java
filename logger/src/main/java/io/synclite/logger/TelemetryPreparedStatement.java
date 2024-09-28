@@ -15,6 +15,7 @@
  */
 
 package io.synclite.logger;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.List;
 
@@ -111,6 +112,11 @@ public class TelemetryPreparedStatement extends JDBC4PreparedStatement {
 		}
 		return new int[] {};
 	}
+
+    @Override
+    public ResultSet executeQuery() throws SQLException {
+    	throw new SQLException("executeQuery not allowed in Telemetry and Streaming devices");
+    }
 
 	@Override
 	public final void addBatch() throws SQLException {

@@ -36,17 +36,19 @@ public class TelemetryConnection extends JDBC4Connection {
     protected long commitId;
     protected EventLogger sqlLogger;
     private boolean ready = false;
+    private Properties props;
     public TelemetryConnection(String url, String fileName, Properties prop) throws SQLException {
         super(url, fileName, prop);
         this.path = Path.of(fileName);
         this.userAutoCommit = true;
+        this.props = prop;
         super.setAutoCommit(false);
-        initConn();
         this.sqlLogger = (EventLogger) SQLLogger.findInstance(path);
         if (this.sqlLogger == null) {
         	//Check if props are specified and props have a property "config" with value as a path to a synclite logger configuration file.
         	if (prop != null) {
         		initDevice(prop);
+        		cleanUpProps();
 	        	this.sqlLogger = (EventLogger) SQLLogger.findInstance(path);
         	} else {
         		//Try initializing without configs.
@@ -61,9 +63,16 @@ public class TelemetryConnection extends JDBC4Connection {
         		throw new SQLException("SyncLite logger is not healthy for device : " + path + ". Please check device trace file for more details. Please close and initialize the device again.");
         	}
         }
+        initConn();
         this.commitId = this.sqlLogger.getNextCommitID();
         this.ready = true;
     }
+
+	private final void cleanUpProps() {
+		//Remove SyncLite specific props from the props object
+		props.remove("config");
+		props.remove("device-name");
+	}
 
 	final void initConn() throws SQLException {
 		doInitConn();

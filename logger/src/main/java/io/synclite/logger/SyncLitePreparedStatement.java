@@ -15,6 +15,7 @@
  */
 
 package io.synclite.logger;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 
 import org.sqlite.SQLiteConnection;
@@ -62,6 +63,11 @@ public class SyncLitePreparedStatement extends JDBC4PreparedStatement {
         return result;
     }
 
+    @Override
+    public ResultSet executeQuery() throws SQLException {
+    	return pStmtExecuteQuery();
+    }
+    
     private final void processCommit() throws SQLException {
         if (getConn().getUserAutoCommit() == true) {
             getConn().commit();
@@ -84,7 +90,11 @@ public class SyncLitePreparedStatement extends JDBC4PreparedStatement {
     protected boolean pStmtExecute() throws SQLException {
     	return superExecute();
     }
-    
+
+    protected ResultSet pStmtExecuteQuery() throws SQLException {
+    	return super.executeQuery();
+    }
+
     final boolean superExecute() throws SQLException {
     	return super.execute();
     }    

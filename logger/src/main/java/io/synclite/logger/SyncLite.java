@@ -270,7 +270,7 @@ public class SyncLite extends org.sqlite.JDBC {
 		}
 
 		if (requiresMetadataFile()) {
-			Path metadataDBPath = syncLiteDirPath.resolve(dbPath.getFileName().toString() + ".sqlite");
+			Path metadataDBPath = getMetadataFilePath(dbPath);
 			prepareMetadataDB(dbPath, metadataDBPath, tracer, options);
 		}
 
@@ -322,7 +322,7 @@ public class SyncLite extends org.sqlite.JDBC {
 	protected void prepareMetadataDB(Path dbPath, Path metadataDBPath, Logger tracer, SyncLiteOptions options) throws SQLException {
 		try {
 			DBProcessor processor = getDBProcessor();
-			processor.backupDB(dbPath, metadataDBPath, options, true);			
+			processor.backupDB(dbPath, metadataDBPath, options, true);	
 		} catch (Exception e) {
 			tracer.error("Failed to initialize metadata db during initialization of specified db : " + dbPath + " : " + e.getMessage(), e);
 			throw new SQLException("Failed to initialize metadata db during initialization of specified db : " + dbPath + " : " + e.getMessage(), e);
@@ -354,15 +354,28 @@ public class SyncLite extends org.sqlite.JDBC {
 		SQLLogger.closeAllDevices();    	
 	}
 
-	public static final void closeDevice(Path dbPath) throws SQLException {
+	public synchronized static final void closeDevice(Path dbPath) throws SQLException {
+		//Delete metadata file so that it gets recreated on initialize of the device again
+		deleteMetadataFileIfExists(dbPath);
 		SQLLogger.closeDevice(dbPath.toAbsolutePath());
+	}
+
+	private final static void deleteMetadataFileIfExists(Path dbPath) {
+		Path metadataFilePath = getMetadataFilePath(dbPath);
+		try {
+			if (Files.exists(metadataFilePath)) {
+				Files.delete(metadataFilePath);
+			}
+		} catch (Exception e) {
+			//Ignore
+		}
 	}
 
 	public synchronized static final void closeAllDatabases() throws SQLException {    	
 		closeAllDevices();
 	}
 
-	public static final void closeDatabase(Path dbPath) throws SQLException {
+	public synchronized static final void closeDatabase(Path dbPath) throws SQLException {
 		closeDevice(dbPath);
 	}
 

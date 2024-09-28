@@ -312,7 +312,7 @@ public class TelemetryStatement extends JDBC4Statement {
 
 	@Override
 	public final ResultSet executeQuery(String sql) throws SQLException {
-		ResultSet rs = null;		
+		/*ResultSet rs = null;
 		List<String> sqls = SyncLiteUtils.splitSqls(sql);
 		for (int i=0; i<sqls.size(); ++i) {
 			try {
@@ -329,7 +329,9 @@ public class TelemetryStatement extends JDBC4Statement {
 				}
 			}
 		}
-		return rs;
+		return rs;*/
+		
+    	throw new SQLException("executeQuery not allowed in Telemetry and Streaming devices");
 	}
 
 	@Override

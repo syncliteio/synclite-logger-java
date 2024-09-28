@@ -42,13 +42,13 @@ public class SyncLiteAppenderConnection extends JDBC4Connection {
         this.props = prop;
         initPath(fileName);
         this.userAutoCommit = true;
-        initConn();
         this.sqlLogger = (EventLogger) SQLLogger.findInstance(path);
         if (this.sqlLogger == null) {
         	//Check if props are specified and props have a property "config" with value as a path to a synclite logger configuration file.
         	//Check if props are specified and props have a property "config" with value as a path to a synclite logger configuration file.
         	if (prop != null) {
         		initDevice(prop);
+        		cleanUpProps();
         		this.sqlLogger = (EventLogger) SQLLogger.findInstance(path);
         	} else {
         		//Try initializing without configs.
@@ -63,8 +63,15 @@ public class SyncLiteAppenderConnection extends JDBC4Connection {
         		throw new SQLException("SyncLite logger is not healthy for device : " + path + ". Please check device trace file for more details. Please close and initialize the device again.");
         	}
         }
+        initConn();
         this.commitId = this.sqlLogger.getNextCommitID();
         this.ready = true;
+    }
+
+    private final void cleanUpProps() {
+    	//Remove SyncLite specific props from the props object
+    	props.remove("config");
+    	props.remove("device-name");
     }
 
 	final void initConn() throws SQLException {

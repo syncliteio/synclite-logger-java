@@ -121,7 +121,7 @@ abstract class MultiWriterDBProcessor extends DBProcessor {
 				Files.delete(dstDB);
 			}
 		} catch(IOException e) {
-			throw new SQLException("Failed to cleanup existing backup file : " + dstDB + " : " + e.getMessage(), e);
+			throw new SQLException("Failed to cleanup existing destination file : " + dstDB + " : " + e.getMessage(), e);			
 		}
 		String sqliteUrl = "jdbc:sqlite:" + dstDB;
 		long confBatchSize = options.getLogSegmentFlushBatchSize();
@@ -163,7 +163,7 @@ abstract class MultiWriterDBProcessor extends DBProcessor {
 					first = false;
 				}
 				createTableSqlBuilder.append(")");
-				
+
 				// Create table in SQLite
 				dstStmt.execute(createTableSqlBuilder.toString());
 

@@ -93,8 +93,8 @@ public class Main {
 			//testDemoDBTran();
 			//testSQLite();
 			//testSQLiteAppender();
-			//testDuckDB();
-			testDuckDBAppender();
+			testDuckDB();
+			//testDuckDBAppender();
 			//testH2();
 			//testH2Appender();
 			//testHyperSQL();
@@ -1011,6 +1011,13 @@ public class Main {
 				stmt.executeQuery("SELECT * FROM t2");
 			}
 		}
+
+		try (Connection conn = DriverManager.getConnection(url)) {
+			try (Statement stmt = conn.createStatement()) {
+				stmt.executeUpdate("drop table t2");
+			}
+		}
+		
 	}
 
 	private static void testDuckDBAppenderBasic() throws SQLException, ClassNotFoundException {
