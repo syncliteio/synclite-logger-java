@@ -85,7 +85,7 @@ public class HyperSQLProcessor extends MultiWriterDBProcessor {
 
 		@Override
 		protected Connection getSrcConnection(Path srcDB) throws SQLException {
-			String url = "jdbc:hsqldb:" + srcDB;
+			String url = "jdbc:hsqldb:file:" + srcDB;
 			Connection conn = DriverManager.getConnection(url);
 			conn.setAutoCommit(false);
 			conn.setTransactionIsolation(Connection.TRANSACTION_SERIALIZABLE);

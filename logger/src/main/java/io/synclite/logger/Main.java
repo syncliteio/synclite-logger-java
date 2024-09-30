@@ -92,8 +92,8 @@ public class Main {
 
 			//testDemoDBTran();
 			//testSQLite();
-			//testSQLiteAppender();
-			testDuckDB();
+			testSQLiteAppender();
+			//testDuckDB();
 			//testDuckDBAppender();
 			//testH2();
 			//testH2Appender();
@@ -811,7 +811,7 @@ public class Main {
 		Path config = syncLiteLoggerConfig;	
 		SQLite.initialize(dbPath, config, "testSQLiteBasic");
 
-		SQLite.initialize(dbPath);
+		//SQLite.initialize(dbPath);
 		String url = "jdbc:synclite_sqlite:" + dbPath;
 
 		{
@@ -881,23 +881,24 @@ public class Main {
 		{
 
 			try (Connection conn = DriverManager.getConnection(url)) {
-				//conn.setAutoCommit(false);
+				conn.setAutoCommit(false);
 				try (Statement stmt = conn.createStatement()) {
 					stmt.execute("create table if not exists t1(a int, b int)");
-					((SyncLiteAppenderStatement) stmt).executeUnlogged("insert into t1 values(0,0)");
+					//((SyncLiteAppenderStatement) stmt).executeUnlogged("insert into t1 values(0,0)");
+					
 				}
 
 				try (PreparedStatement pstmt = conn.prepareStatement("INSERT INTO t1 VALUES(?,?)")) {
 
-					for (int i = 1; i <= 1000010; ++i) {
+					for (int i = 1; i <= 100; ++i) {
 						pstmt.setInt(1, i);
 						pstmt.setInt(2, i);
 						pstmt.addBatch();						
 					}
 					pstmt.executeBatch();
 				}			
-
-				//conn.commit();
+				conn.commit();
+				
 			}
 		}
 	}
@@ -959,6 +960,10 @@ public class Main {
 					stmt.executeUpdate("insert into t1 values(0,0)");
 				}
 
+				try (PreparedStatement pstmt = conn.prepareStatement("select a, b from t1")) {
+					pstmt.executeQuery();
+				}
+				
 				try (PreparedStatement pstmt = conn.prepareStatement("INSERT INTO t1(a, b) VALUES(?,?)")) {
 					for (int i = 1; i <= 100; ++i) {
 						pstmt.setInt(1, i);
@@ -1036,6 +1041,10 @@ public class Main {
 					stmt.executeUpdate("insert into t1 values(0,0)");
 				}
 
+				try (PreparedStatement pstmt = conn.prepareStatement("select a,b from t1")) {
+					pstmt.executeQuery();
+				}
+				
 				try (PreparedStatement pstmt = conn.prepareStatement("INSERT INTO t1(a, b) VALUES(?,?)")) {
 					for (int i = 1; i <= 100; ++i) {
 						pstmt.setInt(1, i);

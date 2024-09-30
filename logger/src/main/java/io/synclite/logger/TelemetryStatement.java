@@ -312,26 +312,11 @@ public class TelemetryStatement extends JDBC4Statement {
 
 	@Override
 	public final ResultSet executeQuery(String sql) throws SQLException {
-		/*ResultSet rs = null;
-		List<String> sqls = SyncLiteUtils.splitSqls(sql);
-		for (int i=0; i<sqls.size(); ++i) {
-			try {
-				executeSingleSQL(sqls.get(i));
-			} catch(SQLException e) {
-				if (e.getMessage().startsWith("Unsupported SQL")) {
-					String tokens[] = sql.trim().split("\\s+");
-					if (tokens[0].equalsIgnoreCase("SELECT")) {
-						rs = super.executeQuery(sql);
-					} else {
-						throw e;
-					}
-
-				}
-			}
+		String tokens[] = sql.trim().split("\\s+");
+		if (tokens[0].equalsIgnoreCase("SELECT")) {
+			return super.executeQuery(sql);
 		}
-		return rs;*/
-		
-    	throw new SQLException("executeQuery not allowed in Telemetry and Streaming devices");
+		throw new SQLException("executeQuery allows SELECT statements only");
 	}
 
 	@Override
