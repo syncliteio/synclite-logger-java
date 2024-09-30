@@ -70,7 +70,6 @@ public class DerbyAppenderConnection extends MultiWriterDBAppenderConnection {
     @Override
     final protected void doInitConn() throws SQLException  {
     	try {
-    		Class.forName("org.apache.derby.jdbc.EmbeddedDriver");
     		this.derbyURL = "jdbc:derby:" + this.path.toString();
     		this.derbyConnection = DriverManager.getConnection(derbyURL, this.props);
     		connAutoCommit(false);

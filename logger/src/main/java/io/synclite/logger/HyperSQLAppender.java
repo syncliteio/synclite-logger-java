@@ -40,27 +40,27 @@ public final class HyperSQLAppender extends SyncLite {
     }
     
     
-	public static synchronized final void initialize(Path dbPath) throws SQLException {
+	public static final void initialize(Path dbPath) throws SQLException {
 		SyncLite.initialize(DeviceType.HYPERSQL_APPENDER, dbPath);
 	}
 
-	public static synchronized final void initialize(Path dbPath, String deviceName) throws SQLException {
+	public static final void initialize(Path dbPath, String deviceName) throws SQLException {
 		SyncLite.initialize(DeviceType.HYPERSQL_APPENDER, dbPath, deviceName);
 	}
 
-	public static synchronized final void initialize(Path dbPath, SyncLiteOptions options) throws SQLException {
+	public static final void initialize(Path dbPath, SyncLiteOptions options) throws SQLException {
 		SyncLite.initialize(DeviceType.HYPERSQL_APPENDER, dbPath, options);
 	}
 
-	public static synchronized final void initialize(Path dbPath, SyncLiteOptions options, String deviceName) throws SQLException {
+	public static final void initialize(Path dbPath, SyncLiteOptions options, String deviceName) throws SQLException {
 		SyncLite.initialize(DeviceType.HYPERSQL_APPENDER, dbPath, options, deviceName);
 	}
 
-	public static synchronized final void initialize(Path dbPath, Path propsPath) throws SQLException {
+	public static final void initialize(Path dbPath, Path propsPath) throws SQLException {
 		SyncLite.initialize(DeviceType.HYPERSQL_APPENDER, dbPath, propsPath);
 	}
 
-	public static synchronized final void initialize(Path dbPath, Path propsPath, String deviceName) throws SQLException {
+	public static final void initialize(Path dbPath, Path propsPath, String deviceName) throws SQLException {
 		SyncLite.initialize(DeviceType.HYPERSQL_APPENDER, dbPath, propsPath, deviceName);
 	}
     
@@ -72,23 +72,6 @@ public final class HyperSQLAppender extends SyncLite {
 	protected DBProcessor getDBProcessor() {
 		return new HyperSQLProcessor();
 	}	
-
-	@Override
-	protected void validateLibs(Logger tracer) throws SQLException {
-		try {
-			Class.forName("org.sqlite.JDBC");
-		} catch (ClassNotFoundException e) {
-			tracer.error("Failed to load sqlite jdbc driver : " + e.getMessage());
-			throw new SQLException("Failed to load sqlite jdbc driver");
-		}    	
-		
-		try {
-			Class.forName("org.hsqldb.jdbc.JDBCDriver");
-		} catch (ClassNotFoundException e) {
-			tracer.error("Failed to load HyperSQL jdbc driver : " + e.getMessage());
-			throw new SQLException("Failed to load HyperSQL jdbc driver");
-		}    	
-	}
 
 	@Override
 	protected void setDeviceTypeInOptions(SyncLiteOptions options) throws SQLException {

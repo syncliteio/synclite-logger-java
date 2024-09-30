@@ -69,8 +69,7 @@ public class HyperSQLConnection extends MultiWriterDBConnection {
     @Override
     final protected void doInitConn() throws SQLException  {
     	try {
-            Class.forName("org.hsqldb.jdbc.JDBCDriver");
-    		this.hsqlDBURL = "jdbc:hsqldb:" + this.path.toString();
+    		this.hsqlDBURL = "jdbc:hsqldb:file:" + this.path.toString();
     		this.hsqlDBConnection = DriverManager.getConnection(hsqlDBURL, this.props);
     		connAutoCommit(false);
     	} catch (Exception e) {

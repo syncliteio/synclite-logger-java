@@ -57,7 +57,7 @@ public class SyncLiteAppenderStatement extends JDBC4Statement {
         return result;
     }
 
-    private final boolean executeSingleSQL(String sql) throws SQLException {
+    protected boolean executeSingleSQL(String sql) throws SQLException {
     	boolean result = false;
     	String strippedSql = sql.strip();
     	String tokens[] = strippedSql.split("\\s+");
@@ -71,12 +71,12 @@ public class SyncLiteAppenderStatement extends JDBC4Statement {
     	} else if ((tokens.length == 4) && tokens[0].equalsIgnoreCase("PUBLISH") && tokens[1].equalsIgnoreCase("COLUMN") && tokens[2].equalsIgnoreCase("LIST")) {	
 			result = executePublishColumnList(sql, tokens);
     	}  else if (tokens[0].equalsIgnoreCase("DELETE") || tokens[0].equalsIgnoreCase("UPDATE")) {
-			throw new SQLException("Unsupported SQL : SyncLite appender device does not support SQL : " + sql + ". Supported SQLs are CREATE TABLE, DROP TABLE, ALTER TABLE, INSERT INTO, SELECT");
+			throw new SQLException("Unsupported SQL: SyncLite appender device does not allow SQL : " + sql + ". Allowed SQLs are CREATE TABLE, DROP TABLE, ALTER TABLE, INSERT INTO, SELECT");
 		}  else {
 			try {
 				SyncLiteUtils.checkAndExecuteInternalAppenderSql(sql);
 			} catch (SQLException e) {
-				throw new SQLException("Unsupported SQL : SyncLite appender device does not support SQL : " + sql + ". Supported SQLs are CREATE TABLE, DROP TABLE, ALTER TABLE, INSERT INTO, SELECT");
+				throw new SQLException("Unsupported SQL: SyncLite appender device does not allow SQL : " + sql + ". Allowed SQLs are CREATE TABLE, DROP TABLE, ALTER TABLE, INSERT INTO, SELECT");
 			}
     	}
     	return result;
