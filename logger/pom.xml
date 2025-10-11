@@ -125,8 +125,8 @@
 		<dependency>
 		    <groupId>org.duckdb</groupId>
 		    <artifactId>duckdb_jdbc</artifactId>
-		    <version>1.0.0</version>
-		</dependency>		
+		    <version>1.4.1.0</version>
+		</dependency>
 		
 		<!-- https://mvnrepository.com/artifact/org.apache.derby/derby -->
 		<dependency>
