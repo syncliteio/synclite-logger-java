@@ -23,7 +23,6 @@ import java.sql.Statement;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 
 import org.apache.log4j.Logger;
@@ -31,7 +30,7 @@ import org.apache.log4j.Logger;
 public final class SyncTxnLogger extends TxnLogger {
 
     private ScheduledExecutorService segmentCreatorService;
-	private AtomicBoolean txnInProgress = new AtomicBoolean();
+    private ReentrantLock writeLock;
 
 	public SyncTxnLogger(Path dbPath, SyncLiteOptions options, Logger tracer) throws SQLException {
 		super(dbPath, options, tracer);
@@ -56,11 +55,9 @@ public final class SyncTxnLogger extends TxnLogger {
 	@Override
     protected final void checkups() {  	
 		try  {
-			synchronized (txnInProgress) {
-				if (!txnInProgress.get()) {
-					super.checkups();
-				}
-			}
+			acquireSegmentLock();
+			super.checkups();
+			releaseSegmentLock();
 		} catch (SQLException e) {
 			tracer.error("SyncLite Logger failed to perform log segment checkups : ", e);
 			throw new RuntimeException("SyncLite Logger failed to perform log segment checkups : ", e);
@@ -79,26 +76,33 @@ public final class SyncTxnLogger extends TxnLogger {
         }
 	}
 
+    private final void acquireSegmentLock() {
+    	writeLock.lock();
+    }
+    
+    private final void releaseSegmentLock() {
+        if (writeLock.isHeldByCurrentThread()) {
+        	writeLock.unlock();
+        }
+    }
+
 	@Override
 	void log(long commitId, String sql, Object[] args) throws SQLException {
 		CommandLogRecord rec = new CommandLogRecord(commitId, sql, args);
         if (currentTxnLogCount == 0) {
         	//This is the first log record of the txn
-			synchronized(txnInProgress) {
-				txnInProgress.set(true);
-			}
+        	//Lock the log segment
+        	acquireSegmentLock();
         	logBeginTran(rec);
         }
 		appendLogRecord(rec);
+
 	}
 
 	@Override
 	void flush(long commitId) throws SQLException {
         executeLogBatch();
         commitLogSegment();
-		synchronized (txnInProgress) {
-			txnInProgress.set(false);
-		}
 	}
 
 	@Override
@@ -127,6 +131,7 @@ public final class SyncTxnLogger extends TxnLogger {
 	protected void logCommitAndFlush(long commitId) throws SQLException {
 		appendLogRecord(new CommandLogRecord(commitId, "COMMIT", null));
 		flush(commitId);
+		releaseSegmentLock();
         //Reset current txn log count to 0 to enable log switching on commit boundary
         this.currentTxnLogCount = 0;
         this.currentBatchLogCount = 0;
@@ -136,9 +141,6 @@ public final class SyncTxnLogger extends TxnLogger {
 	@Override
 	protected void logRollbackAndFlush(long commitId) throws SQLException {
 		undoLogsForCommit(commitId);
-		synchronized (txnInProgress) {
-			txnInProgress.set(false);
-		}
 	}
 
 	@Override
@@ -147,6 +149,7 @@ public final class SyncTxnLogger extends TxnLogger {
 
 	@Override
 	protected void initLogger() {
+		this.writeLock = new ReentrantLock();
         segmentCreatorService = Executors.newScheduledThreadPool(1);
 	}
 

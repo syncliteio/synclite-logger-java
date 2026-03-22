@@ -29,7 +29,7 @@ public class TelemetryPreparedStatement extends JDBC4PreparedStatement {
 		super(conn, sql);
 		List<String> subSqls = SyncLiteUtils.splitSqls(sql);
 		if (subSqls.size() > 1) {
-			throw new SQLException("Unsupported SQL: SyncLite Telemetry supports a single SQL statement as part of a PreparedStatement, multiple specified  : " + sql);			
+			throw new SQLException("SyncLite Telemetry supports a single SQL statement as part of a PreparedStatement, multiple specified  : " + sql);			
 		}
 		String stippedSql = subSqls.get(0).strip();
 		String[] tokens = stippedSql.split("\\s+");		
@@ -43,10 +43,8 @@ public class TelemetryPreparedStatement extends JDBC4PreparedStatement {
 				(tokens[1].equalsIgnoreCase("TABLE"))
 				) {
 			this.isDDL = true;
-		} else if (tokens[0].equalsIgnoreCase("SELECT")) {
-			//Allowed SQL
 		} else {
-			throw new SQLException("Unsupported SQL: " + sql);
+			throw new SQLException("SyncLite Telemetry : Unsupported SQL : " + sql);
 		}
 		this.sqlLogger = EventLogger.findInstance(getConn().getPath());
 	}
@@ -117,11 +115,7 @@ public class TelemetryPreparedStatement extends JDBC4PreparedStatement {
 
     @Override
     public ResultSet executeQuery() throws SQLException {
-		String tokens[] = sql.trim().split("\\s+");
-		if (tokens[0].equalsIgnoreCase("SELECT")) {
-			return super.executeQuery(sql);
-		}
-		throw new SQLException("executeQuery allows only SELECT statements");
+    	throw new SQLException("executeQuery not allowed in Telemetry and Streaming devices");
     }
 
 	@Override

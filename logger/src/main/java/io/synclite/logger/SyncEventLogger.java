@@ -21,14 +21,14 @@ import java.sql.SQLException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 
 import org.apache.log4j.Logger;
 
 public class SyncEventLogger extends EventLogger {
 	private ScheduledExecutorService segmentCreatorService;
-	private AtomicBoolean txnInProgress = new AtomicBoolean(false);
+	private ReentrantLock writeLock;
+
 	private SyncEventLogger(Path dbPath, SyncLiteOptions options, Logger tracer) throws SQLException {
 		super(dbPath, options, tracer);
 		segmentCreatorService.scheduleAtFixedRate(this::checkups, 0, options.getLogSegmentSwitchDurationThresholdMs(), TimeUnit.MILLISECONDS);
@@ -42,7 +42,7 @@ public class SyncEventLogger extends EventLogger {
 			try {
 				return new SyncEventLogger(s, options, tracer);
 			} catch (SQLException e) {
-				tracer.error("Failed to create/get a SQL logger instance for device : " + dbPath + " : " + e.getMessage(), e);
+				tracer.error("Failed to create/get a SQL logger instance for device : " + dbPath, e);
 				throw new RuntimeException(e);
 			}
 		});
@@ -50,25 +50,33 @@ public class SyncEventLogger extends EventLogger {
 
 	@Override
 	protected final void checkups() {  	
-		try {
-			synchronized (txnInProgress) {				
-				if (!txnInProgress.get()) {
-					super.checkups();
-				}
-			}
+		try  {
+			acquireSegmentLock();
+			super.checkups();
+			releaseSegmentLock();
 		} catch (SQLException e) {
-			tracer.error("Failed to perform log segment checkups : " + e.getMessage(), e);
-			throw new RuntimeException("Failed to perform log segment checkups : " + e.getMessage(), e);
+			tracer.error("Failed to perform log segment checkups : ", e);
+			throw new RuntimeException("Failed to perform log segment checkups : ", e);
 		}		
+	}
+
+
+	private final void acquireSegmentLock() {
+		writeLock.lock();
+	}
+
+	private final void releaseSegmentLock() {
+		if (writeLock.isHeldByCurrentThread()) {
+			writeLock.unlock();
+		}
 	}
 
 	@Override
 	void log(long commitId, String sql, Object[] args) throws SQLException {
 		if (currentTxnLogCount == 0) {
-        	//This is the first log record of the txn
-			synchronized(txnInProgress) {
-				txnInProgress.set(true);
-			}
+			//This is the first log record of the txn
+			//Lock the log segment
+			acquireSegmentLock();
 		}
 		appendLogRecord(new CommandLogRecord(commitId, sql, args));
 	}
@@ -77,18 +85,10 @@ public class SyncEventLogger extends EventLogger {
 	void flush(long commitId) throws SQLException {
 		executeLogBatch();
 		commitLogSegment();
-		synchronized (txnInProgress) {
-			txnInProgress.set(false);
-		}
+		//Release segment lock 
+		releaseSegmentLock();
 	}
-	
-	@Override
-	protected void doRollback() throws SQLException {
-		rollbackLogSegment();
-		synchronized (txnInProgress) {
-			txnInProgress.set(false);
-		}
-	}
+
 
 	@Override
 	protected void terminateInternal() {
@@ -97,7 +97,7 @@ public class SyncEventLogger extends EventLogger {
 			closeCurrentLogSegment();
 			stopSegmentCreatorService();
 		} catch (SQLException e) {			
-			tracer.error("SyncLite log segment log segment could not be closed properly for device " + dbPath + ", failed with exception : " + e.getMessage(), e);
+			tracer.error("SyncLite log segment log segment could not be closed properly for device " + dbPath + ", failed with exception : " +  e);
 		}
 	}
 
@@ -119,6 +119,7 @@ public class SyncEventLogger extends EventLogger {
 
 	@Override
 	protected void initLogger() {
+		this.writeLock = new ReentrantLock();
 		segmentCreatorService = Executors.newScheduledThreadPool(1);	
 	}
 
