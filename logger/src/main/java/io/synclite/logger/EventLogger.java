@@ -80,16 +80,12 @@ public abstract class EventLogger extends SQLLogger {
 	}   
 
 	final void rollback(long commitId) throws SQLException {
-		doRollback();
+		rollbackLogSegment();
 		this.currentTxnLogCount = 0;
 		this.currentBatchLogCount = 0;
 		checkups();
 	}   
 	
-	protected void doRollback() throws SQLException {
-		rollbackLogSegment();
-	}
-
 	@Override
 	protected void initializeAdditionalMetadataProperties() throws SQLException {
 		String strVal = metadataMgr.getStringProperty("device_type");

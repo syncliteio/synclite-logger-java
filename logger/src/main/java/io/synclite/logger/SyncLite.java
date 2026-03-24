@@ -24,7 +24,6 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.Properties;
-import java.util.concurrent.ConcurrentHashMap;
 
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
@@ -38,22 +37,11 @@ public class SyncLite extends org.sqlite.JDBC {
 
 	private static HashMap<DeviceType, SyncLite> INSTANCES_BY_DEVICE_TYPES = new HashMap<DeviceType, SyncLite>();
 	private static HashMap<String, SyncLite> INSTANCES_BY_PRREFIXES = new HashMap<String, SyncLite>();
-	private static ConcurrentHashMap<Path, Object> dbInitializationLocks = new ConcurrentHashMap<>();
 
 	static
 	{
 		SyncLite instance;
-		//Load embedded db drivers
-		try {
-			Class.forName("org.sqlite.JDBC");
-    		Class.forName("org.duckdb.DuckDBDriver");
-    		Class.forName("org.apache.derby.jdbc.EmbeddedDriver");
-    		Class.forName("org.h2.Driver");
-			Class.forName("org.hsqldb.jdbc.JDBCDriver");
-		} catch (Exception e) {
-			throw new RuntimeException("Failed to load JDBC driver(s) : " + e.getMessage(), e);
-		}
-		
+
 		instance = new SQLite();
 		INSTANCES_BY_DEVICE_TYPES.put(DeviceType.SQLITE, instance);
 		INSTANCES_BY_PRREFIXES.put("jdbc:synclite_sqlite:", instance);
@@ -106,7 +94,7 @@ public class SyncLite extends org.sqlite.JDBC {
 			DriverManager.registerDriver(new SyncLite());
 		}
 		catch (SQLException e) {
-			throw new RuntimeException("Failed to register SyncLite JDBC driver : " + e.getMessage(), e);
+			e.printStackTrace();
 		} 
 	}
 
@@ -161,7 +149,7 @@ public class SyncLite extends org.sqlite.JDBC {
 		return Path.of(url.substring(prefix.length(), questionMarkIndex)).toAbsolutePath().toString();
 	}
 
-	public static void initialize(DeviceType deviceType, Path dbPath) throws SQLException {
+	public static synchronized void initialize(DeviceType deviceType, Path dbPath) throws SQLException {
 		Logger tracer = null;
 		try {
 			SyncLiteOptions options = new SyncLiteOptions();
@@ -175,7 +163,7 @@ public class SyncLite extends org.sqlite.JDBC {
 		}
 	}
 
-	public static final void initialize(DeviceType deviceType, Path dbPath, String deviceName) throws SQLException {
+	public static synchronized final void initialize(DeviceType deviceType, Path dbPath, String deviceName) throws SQLException {
 		Logger tracer = null;
 		try {
 			SyncLiteOptions options = new SyncLiteOptions();
@@ -190,7 +178,7 @@ public class SyncLite extends org.sqlite.JDBC {
 		}
 	}
 
-	public static final void initialize(DeviceType deviceType, Path dbPath, SyncLiteOptions options) throws SQLException {
+	public static synchronized final void initialize(DeviceType deviceType, Path dbPath, SyncLiteOptions options) throws SQLException {
 		Logger tracer = null;
 		try {
 			//Make a deep copy of these options so that we don't end up mixing options for multiple devices.
@@ -210,7 +198,7 @@ public class SyncLite extends org.sqlite.JDBC {
 		}
 	}
 
-	public static final void initialize(DeviceType deviceType, Path dbPath, SyncLiteOptions options, String deviceName) throws SQLException {
+	public static synchronized final void initialize(DeviceType deviceType, Path dbPath, SyncLiteOptions options, String deviceName) throws SQLException {
 		Logger tracer = null;
 		try {
 			//Make a deep copy of these options so that we don't end up mixing options for multiple devices.
@@ -231,7 +219,7 @@ public class SyncLite extends org.sqlite.JDBC {
 		}
 	}
 
-	public static final void initialize(DeviceType deviceType, Path dbPath, Path propsPath) throws SQLException {
+	public static synchronized final void initialize(DeviceType deviceType, Path dbPath, Path propsPath) throws SQLException {
 		Logger tracer = null;
 		try {
 			tracer = initTracer(dbPath.toAbsolutePath());
@@ -245,7 +233,7 @@ public class SyncLite extends org.sqlite.JDBC {
 		}
 	}
 
-	public static final void initialize(DeviceType deviceType, Path dbPath, Path propsPath, String deviceName) throws SQLException {
+	public static synchronized final void initialize(DeviceType deviceType, Path dbPath, Path propsPath, String deviceName) throws SQLException {
 		Logger tracer = null;
 		try {
 			tracer = initTracer(dbPath);
@@ -261,64 +249,65 @@ public class SyncLite extends org.sqlite.JDBC {
 	}
 
 
-	private final void initialize(Path dbPath, SyncLiteOptions options, Logger tracer) throws SQLException {
-		Object lock = dbInitializationLocks.computeIfAbsent(dbPath, p -> new Object());
-
-		//Synchronize access for a given dbPath.
-		synchronized (lock) {
-			if (SQLLogger.findInstance(dbPath) != null) {
-				//throw new SQLException("SyncLite transactional duckdb device " + dbPath + " already initialized");
-				return;
-			}
-
-			//Create SyncLite dir
-			Path syncLiteDirPath = Path.of(dbPath.toString() + ".synclite");   	
-			try {
-				Files.createDirectories(syncLiteDirPath);
-			} catch (IOException e) {
-				throw new SQLException("Failed to create synclite directory : " + e.getMessage(), e);
-			}
-
-			if (requiresSQLiteSchemaFile()) {
-				Path sqliteSchemaFilePath = getSQLiteSchemaFilePath(dbPath);
-				prepareSQLiteSchemaFile(dbPath, sqliteSchemaFilePath, tracer, options);
-			}
-
-			Path defaultLocalStageDirectory = syncLiteDirPath;
-
-			if (options.getNumDestinations() == 0) {
-				options.setDestinationType(1, DestinationType.FS);
-				options.setLocalDataStageDirectory(1, defaultLocalStageDirectory);
-			} 
-			for (Integer i = 1; i <= options.getNumDestinations(); ++i) {
-				if (options.getLocalDataStageDirectory(i) == null) {
-					options.setDestinationType(i, DestinationType.FS);
-					options.setLocalDataStageDirectory(i, defaultLocalStageDirectory);
-				} else {
-					if (options.getDestinationType(i) == null) {
-						options.setDestinationType(i, DestinationType.FS);
-					}
-				}
-			}
-
-			//Validate INTERNAL command handler if set  	
-			if (options.getEnableCommandHandler()) {
-				if (options.getCommandHandlerType() == CommandHandlerType.INTERNAL) {
-					if (options.getCommandHanderCallback() == null) {
-						throw new SQLException("No command handler callback registered by the application. It must be registered when INTERNAL command-handler is enabled.");
-					}
-				}
-			}
-			//Set device type
-			setDeviceTypeInOptions(options);
-
-			getOrCreateLoggerInstace(dbPath, options, tracer);
-
-			addShutdownHook();
-		}
+	protected void validateLibs(Logger tracer) throws SQLException {
+		throw new IllegalAccessError("Not implemented for base class SyncLite");
 	}
 
-	protected boolean requiresSQLiteSchemaFile() {
+	private final void initialize(Path dbPath, SyncLiteOptions options, Logger tracer) throws SQLException {
+		validateLibs(tracer);
+
+		if (SQLLogger.findInstance(dbPath) != null) {
+			//throw new SQLException("SyncLite transactional duckdb device " + dbPath + " already initialized");
+			return;
+		}
+
+		//Create SyncLite dir
+		Path syncLiteDirPath = Path.of(dbPath.toString() + ".synclite");   	
+		try {
+			Files.createDirectories(syncLiteDirPath);
+		} catch (IOException e) {
+			throw new SQLException("Failed to create synclite directory : " + e.getMessage(), e);
+		}
+
+		if (requiresMetadataFile()) {
+			Path metadataDBPath = getMetadataFilePath(dbPath);
+			prepareMetadataDB(dbPath, metadataDBPath, tracer, options);
+		}
+
+		Path defaultLocalStageDirectory = syncLiteDirPath;
+
+		if (options.getNumDestinations() == 0) {
+			options.setDestinationType(1, DestinationType.FS);
+			options.setLocalDataStageDirectory(1, defaultLocalStageDirectory);
+		} 
+		for (Integer i = 1; i <= options.getNumDestinations(); ++i) {
+			if (options.getLocalDataStageDirectory(i) == null) {
+				options.setDestinationType(i, DestinationType.FS);
+				options.setLocalDataStageDirectory(i, defaultLocalStageDirectory);
+			} else {
+				if (options.getDestinationType(i) == null) {
+					options.setDestinationType(i, DestinationType.FS);
+				}
+			}
+		}
+
+		//Validate INTERNAL command handler if set  	
+		if (options.getEnableCommandHandler()) {
+			if (options.getCommandHandlerType() == CommandHandlerType.INTERNAL) {
+				if (options.getCommandHanderCallback() == null) {
+					throw new SQLException("No command handler callback registered by the application. It must be registered when INTERNAL command-handler is enabled.");
+				}
+			}
+		}
+		//Set device type
+		setDeviceTypeInOptions(options);
+
+		getOrCreateLoggerInstace(dbPath, options, tracer);
+
+		addShutdownHook();
+	}
+
+	protected boolean requiresMetadataFile() {
 		return true;
 	}
 
@@ -330,13 +319,13 @@ public class SyncLite extends org.sqlite.JDBC {
 		throw new IllegalAccessError("Not implemented for base class SyncLite");
 	}
 
-	protected void prepareSQLiteSchemaFile(Path dbPath, Path sqliteSchemaFilePath, Logger tracer, SyncLiteOptions options) throws SQLException {
+	protected void prepareMetadataDB(Path dbPath, Path metadataDBPath, Logger tracer, SyncLiteOptions options) throws SQLException {
 		try {
 			DBProcessor processor = getDBProcessor();
-			processor.backupDB(dbPath, sqliteSchemaFilePath, options, true);	
+			processor.backupDB(dbPath, metadataDBPath, options, true);	
 		} catch (Exception e) {
-			tracer.error("Failed to initialize sqlite schema file during initialization of specified db : " + dbPath + " : " + e.getMessage(), e);
-			throw new SQLException("Failed to initialize sqlite schema file during initialization of specified db : " + dbPath + " : " + e.getMessage(), e);
+			tracer.error("Failed to initialize metadata db during initialization of specified db : " + dbPath + " : " + e.getMessage(), e);
+			throw new SQLException("Failed to initialize metadata db during initialization of specified db : " + dbPath + " : " + e.getMessage(), e);
 		}
 	}
 
@@ -361,35 +350,32 @@ public class SyncLite extends org.sqlite.JDBC {
 		return logger;
 	}
 
-	public static final void closeAllDevices() throws SQLException {    	
+	public synchronized static final void closeAllDevices() throws SQLException {    	
 		SQLLogger.closeAllDevices();    	
 	}
 
-	public static final void closeDevice(Path dbPath) throws SQLException {
+	public synchronized static final void closeDevice(Path dbPath) throws SQLException {
 		//Delete metadata file so that it gets recreated on initialize of the device again
-		Object lock = dbInitializationLocks.computeIfAbsent(dbPath, p -> new Object());
-		synchronized (lock) {
-			deleteSQLiteSchemaFileIfExists(dbPath);
-			SQLLogger.closeDevice(dbPath.toAbsolutePath());
-		}
+		deleteMetadataFileIfExists(dbPath);
+		SQLLogger.closeDevice(dbPath.toAbsolutePath());
 	}
 
-	private final static void deleteSQLiteSchemaFileIfExists(Path dbPath) {
-		Path sqliteSchemaFilePath = getSQLiteSchemaFilePath(dbPath);
+	private final static void deleteMetadataFileIfExists(Path dbPath) {
+		Path metadataFilePath = getMetadataFilePath(dbPath);
 		try {
-			if (Files.exists(sqliteSchemaFilePath)) {
-				Files.delete(sqliteSchemaFilePath);
+			if (Files.exists(metadataFilePath)) {
+				Files.delete(metadataFilePath);
 			}
 		} catch (Exception e) {
 			//Ignore
 		}
 	}
 
-	public static final void closeAllDatabases() throws SQLException {    	
+	public synchronized static final void closeAllDatabases() throws SQLException {    	
 		closeAllDevices();
 	}
 
-	public static final void closeDatabase(Path dbPath) throws SQLException {
+	public synchronized static final void closeDatabase(Path dbPath) throws SQLException {
 		closeDevice(dbPath);
 	}
 
@@ -467,14 +453,6 @@ public class SyncLite extends org.sqlite.JDBC {
 
 	static final String getMetadataFileSuffix() {
 		return ".synclite.metadata";
-	}
-
-	static final String getSQLiteSchemaFileSuffix() {
-		return ".sqlite";
-	}
-
-	static final Path getSQLiteSchemaFilePath(Path dbPath) {
-		return Path.of(dbPath.toString() + ".synclite",  dbPath.getFileName().toString() + getSQLiteSchemaFileSuffix());
 	}
 
 	static final Path getMetadataFilePath(Path dbPath) {
