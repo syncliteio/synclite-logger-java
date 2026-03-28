@@ -1,5 +1,0 @@
-git -C "C:/work/synclite/SyncLite/synclite-logger-java" add -A ; git -C "C:/work/synclite/SyncLite/synclite-logger-java" commit -m "Step 3: Fix Security - Replace log4j 1.x with reload4j - Compile: SUCCESS
-
-- Replace log4j:log4j:1.2.17 with ch.qos.reload4j:reload4j:1.2.25 (drop-in security patch)
-- Upgrade slf4j-api from 1.7.5 to 1.7.36 (security patches)
-- 32 source files using org.apache.log4j API compile unchanged (same package names)" 2>&1

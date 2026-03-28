@@ -28,7 +28,7 @@ import java.util.List;
 
 public class DuckDBProcessor extends MultiWriterDBProcessor {
 
-	public DuckDBProcessor() {		
+	public DuckDBProcessor() {
 	}
 
 	@Override
@@ -41,14 +41,6 @@ public class DuckDBProcessor extends MultiWriterDBProcessor {
 					String columnName = tableSchema.getString("name");
 					String columnType = tableSchema.getString("type");
 					String type = columnType;
-					/*
-					if (columnType.contains("[")) {
-						//If the column type contains array subscript then get the left side of [ and set data type with empty array subscript
-						//E.g. float[5] ==> float[]
-						String typePart = columnType.substring(0, columnType.indexOf("["));
-						type = typePart  + "[]";
-					}*/
-					
 					boolean isNullable = tableSchema.getBoolean("notnull") == true ? false : true;
 					String defaultValue = tableSchema.getString("dflt_value") != null ? tableSchema.getString("dflt_value") : null;
 					boolean primaryKey = tableSchema.getBoolean("pk") == true ? true  : false;

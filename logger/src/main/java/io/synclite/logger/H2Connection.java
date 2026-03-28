@@ -68,7 +68,6 @@ public class H2Connection extends MultiWriterDBConnection {
     @Override
     final protected void doInitConn() throws SQLException  {
     	try {
-    		Class.forName("org.h2.Driver");
     		this.h2URL = "jdbc:h2:" + this.path.toString();
     		this.h2Connection = DriverManager.getConnection(h2URL, this.props);
     		connAutoCommit(false);

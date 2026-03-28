@@ -31,7 +31,7 @@ public abstract class MultiWriterDBConnection extends SyncLiteConnection {
 	protected static final String insertCommitLoggerSql = "INSERT INTO synclite_txn(commit_id, operation_id) VALUES(?, ?)";
 
 	public MultiWriterDBConnection(String url, String fileName, Properties props) throws SQLException {
-		super("jdbc:sqlite:" + Path.of(fileName + ".synclite", Path.of(fileName).getFileName().toString() + ".sqlite").toString(), Path.of(fileName + ".synclite", Path.of(fileName).getFileName().toString() + ".sqlite").toString(), props);
+		super("jdbc:sqlite:" + SyncLite.getSQLiteSchemaFilePath(Path.of(fileName)).toString(), SyncLite.getSQLiteSchemaFilePath(Path.of(fileName)).toString() , props);
 		this.cmdStager = new TxnSQLStager(Path.of(fileName), this.sqlLogger.options, commitId);
 		this.dbProcessor = nativeDBProcessor();
 	}	

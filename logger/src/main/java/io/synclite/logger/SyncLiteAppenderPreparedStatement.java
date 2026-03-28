@@ -33,11 +33,18 @@ public class SyncLiteAppenderPreparedStatement extends JDBC4PreparedStatement {
 		super(conn, sql);
     	String strippedSql = sql.strip();
     	String tokens[] = strippedSql.split("\\s+");
-		if (tokens[0].equalsIgnoreCase("INSERT") && tokens[1].equalsIgnoreCase("INTO")) {
+    	if (tokens[0].equalsIgnoreCase("INSERT") && tokens[1].equalsIgnoreCase("INTO")) {
     		SyncLiteUtils.validateInsertForTelemetryAndAppender(strippedSql);
-    	} else {
-			throw new SQLException("Unsupported SQL : SyncLite appender device does not support SQL : " + sql + ". Supported SQLs are CREATE TABLE, DROP TABLE, ALTER TABLE, INSERT INTO, SELECT");
+    	} else if ((tokens[0].equalsIgnoreCase("CREATE") || tokens[0].equalsIgnoreCase("DROP") || tokens[0].equalsIgnoreCase("ALTER")) &&
+    			(tokens[1].equalsIgnoreCase("TABLE"))
+    			) {
+    		//Allowed sql 
+    	} else if (tokens[0].equalsIgnoreCase("SELECT")) {
+    		//Allowed sql
+		} else {
+			throw new SQLException("Unsupported SQL: SyncLite appender device does not allow SQL : " + sql + ". Allowed SQLs are CREATE TABLE, DROP TABLE, ALTER TABLE, INSERT INTO, SELECT");			
     	}
+
 		this.sqlLogger = EventLogger.findInstance(getConn().getPath());
 		this.tableNameInDDL = SyncLiteUtils.getTableNameFromDDL(sql);
 	}

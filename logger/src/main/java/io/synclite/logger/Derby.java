@@ -38,27 +38,27 @@ public final class Derby extends SyncLite {
     }
     
     
-	public static synchronized final void initialize(Path dbPath) throws SQLException {
+	public static final void initialize(Path dbPath) throws SQLException {
 		SyncLite.initialize(DeviceType.DERBY, dbPath);
 	}
 
-	public static synchronized final void initialize(Path dbPath, String deviceName) throws SQLException {
+	public static final void initialize(Path dbPath, String deviceName) throws SQLException {
 		SyncLite.initialize(DeviceType.DERBY, dbPath, deviceName);
 	}
 
-	public static synchronized final void initialize(Path dbPath, SyncLiteOptions options) throws SQLException {
+	public static final void initialize(Path dbPath, SyncLiteOptions options) throws SQLException {
 		SyncLite.initialize(DeviceType.DERBY, dbPath, options);
 	}
 
-	public static synchronized final void initialize(Path dbPath, SyncLiteOptions options, String deviceName) throws SQLException {
+	public static final void initialize(Path dbPath, SyncLiteOptions options, String deviceName) throws SQLException {
 		SyncLite.initialize(DeviceType.DERBY, dbPath, options, deviceName);
 	}
 
-	public static synchronized final void initialize(Path dbPath, Path propsPath) throws SQLException {
+	public static final void initialize(Path dbPath, Path propsPath) throws SQLException {
 		SyncLite.initialize(DeviceType.DERBY, dbPath, propsPath);
 	}
 
-	public static synchronized final void initialize(Path dbPath, Path propsPath, String deviceName) throws SQLException {
+	public static final void initialize(Path dbPath, Path propsPath, String deviceName) throws SQLException {
 		SyncLite.initialize(DeviceType.DERBY, dbPath, propsPath, deviceName);
 	}
 
@@ -69,23 +69,6 @@ public final class Derby extends SyncLite {
 
 	protected DBProcessor getDBProcessor() {
 		return new DerbyProcessor();
-	}
-
-	@Override
-	protected void validateLibs(Logger tracer) throws SQLException {
-		try {
-			Class.forName("org.sqlite.JDBC");
-		} catch (ClassNotFoundException e) {
-			tracer.error("Failed to load sqlite jdbc driver : " + e.getMessage());
-			throw new SQLException("Failed to load sqlite jdbc driver");
-		}    	
-
-		try {
-    		Class.forName("org.apache.derby.jdbc.EmbeddedDriver");
-		} catch (ClassNotFoundException e) {
-			tracer.error("Failed to load derby jdbc driver : " + e.getMessage());
-			throw new SQLException("Failed to load derby jdbc driver");
-		}    	
 	}
 
 	@Override

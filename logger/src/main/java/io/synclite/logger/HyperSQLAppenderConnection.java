@@ -68,7 +68,6 @@ public class HyperSQLAppenderConnection extends MultiWriterDBAppenderConnection 
     @Override
     final protected void doInitConn() throws SQLException  {
     	try {
-            Class.forName("org.hsqldb.jdbc.JDBCDriver");
     		this.hsqlDBURL = "jdbc:hsqldb:" + this.path.toString();
     		this.hsqlDBConnection = DriverManager.getConnection(hsqlDBURL, this.props);
     		connAutoCommit(false);
