@@ -39,27 +39,27 @@ public final class SQLite extends SyncLite {
     }
     
     
-	public static synchronized final void initialize(Path dbPath) throws SQLException {
+	public static final void initialize(Path dbPath) throws SQLException {
 		SyncLite.initialize(DeviceType.SQLITE, dbPath);
 	}
 
-	public static synchronized final void initialize(Path dbPath, String deviceName) throws SQLException {
+	public static final void initialize(Path dbPath, String deviceName) throws SQLException {
 		SyncLite.initialize(DeviceType.SQLITE, dbPath, deviceName);
 	}
 
-	public static synchronized final void initialize(Path dbPath, SyncLiteOptions options) throws SQLException {
+	public static final void initialize(Path dbPath, SyncLiteOptions options) throws SQLException {
 		SyncLite.initialize(DeviceType.SQLITE, dbPath, options);
 	}
 
-	public static synchronized final void initialize(Path dbPath, SyncLiteOptions options, String deviceName) throws SQLException {
+	public static final void initialize(Path dbPath, SyncLiteOptions options, String deviceName) throws SQLException {
 		SyncLite.initialize(DeviceType.SQLITE, dbPath, options, deviceName);
 	}
 
-	public static synchronized final void initialize(Path dbPath, Path propsPath) throws SQLException {
+	public static final void initialize(Path dbPath, Path propsPath) throws SQLException {
 		SyncLite.initialize(DeviceType.SQLITE, dbPath, propsPath);
 	}
 
-	public static synchronized final void initialize(Path dbPath, Path propsPath, String deviceName) throws SQLException {
+	public static final void initialize(Path dbPath, Path propsPath, String deviceName) throws SQLException {
 		SyncLite.initialize(DeviceType.SQLITE, dbPath, propsPath, deviceName);
 	}
     
@@ -70,16 +70,6 @@ public final class SQLite extends SyncLite {
 
 	protected DBProcessor getDBProcessor() {
 		return new SQLiteProcessor();
-	}
-
-	@Override
-	protected void validateLibs(Logger tracer) throws SQLException {
-		try {
-			Class.forName("org.sqlite.JDBC");
-		} catch (ClassNotFoundException e) {
-			tracer.error("Failed to load sqlite jdbc driver : " + e.getMessage());
-			throw new SQLException("Failed to load sqlite jdbc driver");
-		}    	
 	}
 
 	@Override
@@ -95,5 +85,10 @@ public final class SQLite extends SyncLite {
     		AsyncTxnLogger.getInstance(dbPath, options, tracer);    		
     	}
 	}	
-	
+
+	@Override
+	protected boolean requiresSQLiteSchemaFile() {
+		return false;
+	}
+
 }

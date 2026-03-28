@@ -40,4 +40,5 @@ public class StreamingStatement extends TelemetryStatement {
 		long commitId = getConn().getCommitId();
 		getCommandStager().log(commitId, sql, args);
 	}
+	
 }

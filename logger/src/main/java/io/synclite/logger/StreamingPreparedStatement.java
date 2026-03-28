@@ -21,9 +21,21 @@ import java.sql.SQLException;
 import org.sqlite.SQLiteConnection;
 
 public class StreamingPreparedStatement extends TelemetryPreparedStatement {
-
 	public StreamingPreparedStatement(SQLiteConnection conn, String sql) throws SQLException {
 		super(conn, sql);
+    	String strippedSql = sql.strip();
+    	String tokens[] = strippedSql.split("\\s+");
+    	if (tokens[0].equalsIgnoreCase("INSERT") && tokens[1].equalsIgnoreCase("INTO")) {
+    		SyncLiteUtils.validateInsertForTelemetryAndAppender(strippedSql);
+    	} else if ((tokens[0].equalsIgnoreCase("CREATE") || tokens[0].equalsIgnoreCase("DROP") || tokens[0].equalsIgnoreCase("ALTER")) &&
+    			(tokens[1].equalsIgnoreCase("TABLE"))
+    			) {
+    		//Allowed sql 
+    	} else if (tokens[0].equalsIgnoreCase("SELECT")) {
+    		//Allowed sql
+		} else {
+			throw new SQLException("Unsupported SQL: SyncLite streaming device does not allow SQL : " + sql + ". Allowed SQLs are CREATE TABLE, DROP TABLE, ALTER TABLE, INSERT INTO, SELECT");			
+    	}
 	}
 
 	@Override

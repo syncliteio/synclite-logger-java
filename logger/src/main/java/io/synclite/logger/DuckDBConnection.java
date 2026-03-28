@@ -67,7 +67,6 @@ public class DuckDBConnection extends MultiWriterDBConnection {
     @Override
     final protected void doInitConn() throws SQLException  {
     	try {
-    		Class.forName("org.duckdb.DuckDBDriver");
     		this.duckDBURL = "jdbc:duckdb:" + this.path.toString();
     		this.duckDBConnection = DriverManager.getConnection(duckDBURL, this.props);
     		connAutoCommit(false);
