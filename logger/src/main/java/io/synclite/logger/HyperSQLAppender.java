@@ -74,6 +74,23 @@ public final class HyperSQLAppender extends SyncLite {
 	}	
 
 	@Override
+	protected void validateLibs(Logger tracer) throws SQLException {
+		try {
+			Class.forName("org.sqlite.JDBC");
+		} catch (ClassNotFoundException e) {
+			tracer.error("Failed to load sqlite jdbc driver : " + e.getMessage());
+			throw new SQLException("Failed to load sqlite jdbc driver");
+		}    	
+		
+		try {
+			Class.forName("org.hsqldb.jdbc.JDBCDriver");
+		} catch (ClassNotFoundException e) {
+			tracer.error("Failed to load HyperSQL jdbc driver : " + e.getMessage());
+			throw new SQLException("Failed to load HyperSQL jdbc driver");
+		}    	
+	}
+
+	@Override
 	protected void setDeviceTypeInOptions(SyncLiteOptions options) throws SQLException {
 		options.SetDeviceType(DeviceType.HYPERSQL_APPENDER);
 	}

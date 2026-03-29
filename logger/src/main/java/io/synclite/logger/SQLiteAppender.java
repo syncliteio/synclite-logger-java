@@ -73,6 +73,16 @@ public class SQLiteAppender extends SyncLite  {
 	}	
 
 	@Override
+	protected void validateLibs(Logger tracer) throws SQLException {
+		try {
+			Class.forName("org.sqlite.JDBC");
+		} catch (ClassNotFoundException e) {
+			tracer.error("Failed to load sqlite jdbc driver : " + e.getMessage());
+			throw new SQLException("Failed to load sqlite jdbc driver");
+		}	
+	}
+
+	@Override
 	protected void setDeviceTypeInOptions(SyncLiteOptions options) throws SQLException {
 		options.SetDeviceType(DeviceType.SQLITE_APPENDER);
 	}

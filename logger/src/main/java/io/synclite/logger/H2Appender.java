@@ -74,6 +74,23 @@ public final class H2Appender extends SyncLite {
 	}	
 
 	@Override
+	protected void validateLibs(Logger tracer) throws SQLException {
+		try {
+			Class.forName("org.sqlite.JDBC");
+		} catch (ClassNotFoundException e) {
+			tracer.error("Failed to load sqlite jdbc driver : " + e.getMessage());
+			throw new SQLException("Failed to load sqlite jdbc driver");
+		}    	
+		
+		try {
+    		Class.forName("org.h2.Driver");
+		} catch (ClassNotFoundException e) {
+			tracer.error("Failed to load H2 jdbc driver : " + e.getMessage());
+			throw new SQLException("Failed to load H2 jdbc driver");
+		}    	
+	}
+
+	@Override
 	protected void setDeviceTypeInOptions(SyncLiteOptions options) throws SQLException {
 		options.SetDeviceType(DeviceType.H2_APPENDER);
 	}

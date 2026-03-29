@@ -262,6 +262,8 @@ public class SyncLite extends org.sqlite.JDBC {
 
 
 	private final void initialize(Path dbPath, SyncLiteOptions options, Logger tracer) throws SQLException {
+		validateLibs(tracer);
+
 		Object lock = dbInitializationLocks.computeIfAbsent(dbPath, p -> new Object());
 
 		//Synchronize access for a given dbPath.
@@ -323,6 +325,10 @@ public class SyncLite extends org.sqlite.JDBC {
 	}
 
 	protected void getOrCreateLoggerInstace(Path dbPath, SyncLiteOptions options, Logger tracer) throws SQLException {
+		throw new IllegalAccessError("Not implemented for base class SyncLite");
+	}
+
+	protected void validateLibs(Logger tracer) throws SQLException {
 		throw new IllegalAccessError("Not implemented for base class SyncLite");
 	}
 
