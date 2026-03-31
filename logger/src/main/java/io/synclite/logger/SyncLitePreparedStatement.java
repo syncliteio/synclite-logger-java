@@ -64,6 +64,16 @@ public class SyncLitePreparedStatement extends JDBC4PreparedStatement {
     }
 
     @Override
+    public final int executeUpdate() throws SQLException {
+        int result = pStmtExecuteUpdate();
+        if (batchQueryCount == 0) {
+            log();
+        }
+        processCommit();
+        return result;
+    }
+
+    @Override
     public ResultSet executeQuery() throws SQLException {
     	return pStmtExecuteQuery();
     }
@@ -91,22 +101,30 @@ public class SyncLitePreparedStatement extends JDBC4PreparedStatement {
     	return superExecute();
     }
 
+    protected int pStmtExecuteUpdate() throws SQLException {
+    	return superExecuteUpdate();
+    }
+
     protected ResultSet pStmtExecuteQuery() throws SQLException {
     	return super.executeQuery();
     }
-
+    
     final boolean superExecute() throws SQLException {
     	return super.execute();
     }    
 
     final boolean superExecute(String sql) throws SQLException {
     	return super.execute(sql);
-    }    
+    }
 
+    final int superExecuteUpdate() throws SQLException {
+    	return super.executeUpdate();
+    }
+    
     protected void pStmtAddBatch() throws SQLException {
         super.addBatch();
     }
-    
+
     protected int[] pStmtExecuteBatch() throws SQLException {
         return super.executeBatch();
     }

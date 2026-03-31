@@ -78,6 +78,18 @@ public class MultiWriterDBPreparedStatement extends SyncLitePreparedStatement {
     }
     
     @Override
+    final protected int pStmtExecuteUpdate() throws SQLException {
+    	if (tableNameInDDL != null) {
+    		throw new SQLException("DDL statements not permitted with PreparedStatement");
+    	}
+    	for (int pos=0; pos < paramCount; pos++) {
+    		Object o = batch[batchPos + pos];
+    		pstmt.setObject(pos+1, o);
+    	}
+    	return pstmt.executeUpdate();
+    }
+
+    @Override
     final protected int[] pStmtExecuteBatch() throws SQLException {
     	if (tableNameInDDL != null) {
     		throw new SQLException("DDL statements not permitted with PreparedStatement");
