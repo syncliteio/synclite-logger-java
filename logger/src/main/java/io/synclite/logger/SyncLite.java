@@ -62,6 +62,10 @@ public class SyncLite extends org.sqlite.JDBC {
 		INSTANCES_BY_DEVICE_TYPES.put(DeviceType.SQLITE_APPENDER, instance);
 		INSTANCES_BY_PRREFIXES.put("jdbc:synclite_sqlite_appender:", instance);
 
+		instance = new SQLiteStore();
+		INSTANCES_BY_DEVICE_TYPES.put(DeviceType.SQLITE_STORE, instance);
+		INSTANCES_BY_PRREFIXES.put("jdbc:synclite_sqlite_store:", instance);
+
 		instance = new DuckDB();
 		INSTANCES_BY_DEVICE_TYPES.put(DeviceType.DUCKDB, instance);
 		INSTANCES_BY_PRREFIXES.put("jdbc:synclite_duckdb:", instance);
@@ -69,6 +73,10 @@ public class SyncLite extends org.sqlite.JDBC {
 		instance = new DuckDBAppender();
 		INSTANCES_BY_DEVICE_TYPES.put(DeviceType.DUCKDB_APPENDER, instance);
 		INSTANCES_BY_PRREFIXES.put("jdbc:synclite_duckdb_appender:", instance);
+
+		instance = new DuckDBStore();
+		INSTANCES_BY_DEVICE_TYPES.put(DeviceType.DUCKDB_STORE, instance);
+		INSTANCES_BY_PRREFIXES.put("jdbc:synclite_duckdb_store:", instance);
 
 		instance = new Derby();
 		INSTANCES_BY_DEVICE_TYPES.put(DeviceType.DERBY, instance);
@@ -78,6 +86,10 @@ public class SyncLite extends org.sqlite.JDBC {
 		INSTANCES_BY_DEVICE_TYPES.put(DeviceType.DERBY_APPENDER, instance);
 		INSTANCES_BY_PRREFIXES.put("jdbc:synclite_derby_appender:", instance);
 
+		instance = new DerbyStore();
+		INSTANCES_BY_DEVICE_TYPES.put(DeviceType.DERBY_STORE, instance);
+		INSTANCES_BY_PRREFIXES.put("jdbc:synclite_derby_store:", instance);
+
 		instance = new H2();
 		INSTANCES_BY_DEVICE_TYPES.put(DeviceType.H2, instance);
 		INSTANCES_BY_PRREFIXES.put("jdbc:synclite_h2:", instance);
@@ -86,6 +98,10 @@ public class SyncLite extends org.sqlite.JDBC {
 		INSTANCES_BY_DEVICE_TYPES.put(DeviceType.H2_APPENDER, instance);
 		INSTANCES_BY_PRREFIXES.put("jdbc:synclite_h2_appender:", instance);
 
+		instance = new H2Store();
+		INSTANCES_BY_DEVICE_TYPES.put(DeviceType.H2_STORE, instance);
+		INSTANCES_BY_PRREFIXES.put("jdbc:synclite_h2_store:", instance);
+
 		instance = new HyperSQL();
 		INSTANCES_BY_DEVICE_TYPES.put(DeviceType.HYPERSQL, instance);
 		INSTANCES_BY_PRREFIXES.put("jdbc:synclite_hsqldb:", instance);
@@ -93,6 +109,10 @@ public class SyncLite extends org.sqlite.JDBC {
 		instance = new HyperSQLAppender();
 		INSTANCES_BY_DEVICE_TYPES.put(DeviceType.HYPERSQL_APPENDER, instance);
 		INSTANCES_BY_PRREFIXES.put("jdbc:synclite_hsqldb_appender:", instance);
+
+		instance = new HyperSQLStore();
+		INSTANCES_BY_DEVICE_TYPES.put(DeviceType.HYPERSQL_STORE, instance);
+		INSTANCES_BY_PRREFIXES.put("jdbc:synclite_hsqldb_store:", instance);
 
 		instance = new Telemetry();
 		INSTANCES_BY_DEVICE_TYPES.put(DeviceType.TELEMETRY, instance);

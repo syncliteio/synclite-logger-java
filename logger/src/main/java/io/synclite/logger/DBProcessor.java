@@ -37,20 +37,25 @@ public abstract class DBProcessor {
 		case SQLITE:
 		case TELEMETRY:
 		case SQLITE_APPENDER:
+		case SQLITE_STORE:
 			return new SQLiteProcessor();
 		case STREAMING:
 			return new StreamingProcessor();
 		case DUCKDB:
-		case DUCKDB_APPENDER:	
+		case DUCKDB_APPENDER:
+		case DUCKDB_STORE:
 			return new DuckDBProcessor();
 		case DERBY:
-		case DERBY_APPENDER:	
+		case DERBY_APPENDER:
+		case DERBY_STORE:
 			return new DerbyProcessor();
 		case H2:
-		case H2_APPENDER:	
+		case H2_APPENDER:
+		case H2_STORE:
 			return new H2Processor();
 		case HYPERSQL:
-		case HYPERSQL_APPENDER:	
+		case HYPERSQL_APPENDER:
+		case HYPERSQL_STORE:
 			return new HyperSQLProcessor();
 		}
 		throw new SQLException("Unsupported device type : " + deviceType);

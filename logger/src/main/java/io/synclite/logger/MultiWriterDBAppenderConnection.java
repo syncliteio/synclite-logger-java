@@ -162,7 +162,7 @@ public abstract class MultiWriterDBAppenderConnection extends SyncLiteAppenderCo
 	}
 
 	@Override
-	protected final PreparedStatement connPrepareStatement(SyncLiteAppenderConnection conn, String sql) throws SQLException {
+	protected final PreparedStatement connPrepareStatement(SyncLiteStoreConnection conn, String sql) throws SQLException {
 		return new MultiWriterDBAppenderPreparedStatement(this, sql);
 	}
 

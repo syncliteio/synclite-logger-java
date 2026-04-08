@@ -105,12 +105,13 @@ public class TelemetryStatement extends JDBC4Statement {
 		} else if (tokens[0].equalsIgnoreCase("PUBLISH") && tokens[1].equalsIgnoreCase("COLUMN") && tokens[2].equalsIgnoreCase("LIST")) {	
 			result = executePublishColumnList(sql, tokens);
 		} else if (tokens[0].equalsIgnoreCase("UPDATE")) {
-			throw new SQLException("Unsupported SQL : SyncLite telemetry device does not support SQL : " + sql + ". Supported SQLs are CREATE TABLE, DROP TABLE, ALTER TABLE, INSERT INTO, COPY, SELECT");
+			SyncLiteUtils.validateUpdateForTelemetryAndAppender(sql.trim());
+			result = executeUpdate(sql);
 		} else {
 			try {
 				SyncLiteUtils.checkAndExecuteInternalTelemetrySql(sql);
 			} catch (SQLException e) {
-				throw new SQLException("Unsupported SQL : SyncLite telemetry device does not support SQL : " + sql + ". Supported SQLs are CREATE TABLE, DROP TABLE, ALTER TABLE, INSERT INTO, COPY, SELECT");
+				throw new SQLException("Unsupported SQL : SyncLite telemetry device does not support SQL : " + sql + ". Supported SQLs are CREATE TABLE, DROP TABLE, ALTER TABLE, INSERT INTO, UPDATE, DELETE, COPY, SELECT");
 			}
 		}    	
 		return result;
@@ -199,6 +200,12 @@ public class TelemetryStatement extends JDBC4Statement {
 	}
 
 	private final boolean executeDelete(String sql) throws SQLException {
+		logOper(sql);
+		processCommit();
+		return true;
+	}
+
+	private final boolean executeUpdate(String sql) throws SQLException {
 		logOper(sql);
 		processCommit();
 		return true;
