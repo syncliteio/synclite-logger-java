@@ -39,16 +39,18 @@ public class SyncLiteUtils {
 	// Define the regular expression pattern for the allowed INSERT syntaxes
 	private static final String INSERT_TELEMETRY_APPENDER_PATTERN_STR = "INSERT\\s+INTO\\s+(\\w+\\.)?\\w+\\s*(?:\\(([^)]+)\\))?\\s*VALUES\\s*\\(([^)]+)\\)";
 
-	private static final String UPDATE_TELEMETRY_APPENDER_PATTERN_STR = "UPDATE\\s+(\\w+\\.)?\\w+\\s+SET\\s+((\\w+\\s*=\\s*\\?|\\w+\\s+IS\\s+NULL)\\s*,?\\s*)+\\s+WHERE\\s+((\\w+\\s*=\\s*\\?\\s*(?:AND\\s*)?)+|(\\w+\\s+IS\\s+NULL\\s*(?:AND\\s*)?)+)";
+	// UPDATE: requires SET; WHERE is optional; blocks subqueries
+	private static final String UPDATE_TELEMETRY_APPENDER_PATTERN_STR = "UPDATE\\s+(\\w+\\.)?\\w+\\s+SET\\s+(?!.*\\bSELECT\\b).+";
 
-	private static final String DELETE_TELEMETRY_APPENDER_PATTERN_STR = "DELETE\\s+FROM\\s+(\\w+\\.)?\\w+\\s+WHERE\\s+((\\w+\\s*(?:=\\s*\\?|IS\\s+NULL)\\s*(?:AND\\s*)?)+)";
+	// DELETE: WHERE is optional; blocks subqueries
+	private static final String DELETE_TELEMETRY_APPENDER_PATTERN_STR = "DELETE\\s+FROM\\s+(\\w+\\.)?\\w+(?:\\s+WHERE\\s+(?!.*\\bSELECT\\b).+)?";
 
 	// Create a Pattern object
 	private static Pattern INSERT_TELEMETRY_APPENDER_PATTERN = Pattern.compile(INSERT_TELEMETRY_APPENDER_PATTERN_STR, Pattern.CASE_INSENSITIVE);
 
-	private static Pattern UPDATE_TELEMETRY_APPENDER_PATTERN = Pattern.compile(UPDATE_TELEMETRY_APPENDER_PATTERN_STR, Pattern.CASE_INSENSITIVE);
+	private static Pattern UPDATE_TELEMETRY_APPENDER_PATTERN = Pattern.compile(UPDATE_TELEMETRY_APPENDER_PATTERN_STR, Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
 
-	private static Pattern DELETE_TELEMETRY_APPENDER_PATTERN = Pattern.compile(DELETE_TELEMETRY_APPENDER_PATTERN_STR, Pattern.CASE_INSENSITIVE);
+	private static Pattern DELETE_TELEMETRY_APPENDER_PATTERN = Pattern.compile(DELETE_TELEMETRY_APPENDER_PATTERN_STR, Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
 
 	static final List<String> splitSqls(String sql) {
 		List<String> sqls = new ArrayList<String>();
@@ -259,6 +261,36 @@ public class SyncLiteUtils {
 	}
 
 
+	final static boolean checkAndExecuteInternalStoreSql(String sql) throws SQLException {
+		//Check if this is an internal SQL supported by SyncLite
+		String[] tokens = sql.split("\\s+");
+		boolean validSql = false;
+		if (tokens.length != 3) {
+			throw new SQLException("Unsupported SQL : " + sql);
+		}
+		if (tokens[0].equalsIgnoreCase("CLOSE")) {
+			if (tokens[1].equalsIgnoreCase("ALL")) {
+				if (tokens[2].equalsIgnoreCase("DATABASES")) {
+					validSql = true;
+					SQLiteStore.closeAllDatabases();
+				} else if (tokens[2].equalsIgnoreCase("DEVICES")) {
+					validSql = true;
+					SQLiteStore.closeAllDevices();
+				}
+			} else if (tokens[1].equalsIgnoreCase("DATABASE")) {
+				validSql = true;
+				SQLiteStore.closeDatabase(Path.of(tokens[2]));
+			} else if (tokens[1].equalsIgnoreCase("DEVICE")) {
+				validSql = true;
+				SQLiteStore.closeDevice(Path.of(tokens[2]));
+			}
+		}
+		if (validSql == false) {
+			throw new SQLException("Unsupported SQL : " + sql);
+		}
+		return false;
+	}
+
 	final static boolean checkAndExecuteInternalAppenderSql(String sql) throws SQLException {
 		//Check if this is an internal SQL supported by SyncLite
 		//
@@ -414,7 +446,7 @@ public class SyncLiteUtils {
 
 		// Check if the input string matches the pattern
 		if (!matcher.matches()) {
-			throw new SQLException("Unsuppored Syntax for UPDATE. Supported Syntax is UPDATE <dbName>.<tableName> SET col1 = ? , col2 = ? WHERE col1 = ? AND col2 = ?");
+			throw new SQLException("Unsupported Syntax for UPDATE. Supported Syntax is: UPDATE [<dbName>.]<tableName> SET col1 = <value|?> [, col2 = <value|?>] [WHERE col1 = <value|?> [AND col2 = <value|?>]]. Subqueries are not permitted.");
 		}
 	}
 
@@ -425,7 +457,7 @@ public class SyncLiteUtils {
 
 		// Check if the input string matches the pattern
 		if (!matcher.matches()) {
-			throw new SQLException("Unsuppored Syntax for DELETE. Supported Syntax is DELETE FROM <dbName>.<tableName> WHEWRE col1 = ? , col2 = ?");
+			throw new SQLException("Unsupported Syntax for DELETE. Supported Syntax is: DELETE FROM [<dbName>.]<tableName> [WHERE col1 = <value|?> [AND col2 = <value|?>]]. Subqueries are not permitted.");
 		}
 	}
 
@@ -497,19 +529,24 @@ public class SyncLiteUtils {
 	static boolean deviceAllowsConcurrentWriters(DeviceType deviceType) {
 		switch (deviceType) {
 		case SQLITE:
-		case SQLITE_APPENDER:	
+		case SQLITE_APPENDER:
+		case SQLITE_STORE:
 			return false;
 		case DUCKDB:
-		case DUCKDB_APPENDER:	
+		case DUCKDB_APPENDER:
+		case DUCKDB_STORE:
 			return true;
 		case DERBY:
-		case DERBY_APPENDER:	
+		case DERBY_APPENDER:
+		case DERBY_STORE:
 			return true;
 		case H2:
 		case H2_APPENDER:
+		case H2_STORE:
 			return true;
 		case HYPERSQL:
-		case HYPERSQL_APPENDER:	
+		case HYPERSQL_APPENDER:
+		case HYPERSQL_STORE:
 			return true;
 		case TELEMETRY:
 			return false;
