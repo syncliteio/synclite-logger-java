@@ -39,11 +39,11 @@ public class SyncLiteUtils {
 	// Define the regular expression pattern for the allowed INSERT syntaxes
 	private static final String INSERT_TELEMETRY_APPENDER_PATTERN_STR = "INSERT\\s+INTO\\s+(\\w+\\.)?\\w+\\s*(?:\\(([^)]+)\\))?\\s*VALUES\\s*\\(([^)]+)\\)";
 
-	// UPDATE: requires SET; WHERE is optional; blocks subqueries
-	private static final String UPDATE_TELEMETRY_APPENDER_PATTERN_STR = "UPDATE\\s+(\\w+\\.)?\\w+\\s+SET\\s+(?!.*\\bSELECT\\b).+";
+	// UPDATE: requires SET; WHERE is optional; blocks subqueries and function/UDF calls
+	private static final String UPDATE_TELEMETRY_APPENDER_PATTERN_STR = "UPDATE\\s+(\\w+\\.)?\\w+\\s+SET\\s+(?!.*\\bSELECT\\b)(?!.*\\w\\s*\\().+";
 
-	// DELETE: WHERE is optional; blocks subqueries
-	private static final String DELETE_TELEMETRY_APPENDER_PATTERN_STR = "DELETE\\s+FROM\\s+(\\w+\\.)?\\w+(?:\\s+WHERE\\s+(?!.*\\bSELECT\\b).+)?";
+	// DELETE: WHERE is optional; blocks subqueries and function/UDF calls
+	private static final String DELETE_TELEMETRY_APPENDER_PATTERN_STR = "DELETE\\s+FROM\\s+(\\w+\\.)?\\w+(?:\\s+WHERE\\s+(?!.*\\bSELECT\\b)(?!.*\\w\\s*\\().+)?";
 
 	// Create a Pattern object
 	private static Pattern INSERT_TELEMETRY_APPENDER_PATTERN = Pattern.compile(INSERT_TELEMETRY_APPENDER_PATTERN_STR, Pattern.CASE_INSENSITIVE);
@@ -435,7 +435,7 @@ public class SyncLiteUtils {
 
 		// Check if the input string matches the pattern
 		if (!matcher.matches()) {
-			throw new SQLException("Unsuppored Syntax for INSERT. Supported Syntaxes are: 1. INSERT INTO <dbName>.<tableName> (col1, col2, ....) VALUES (?, ?, ...) 2. INSERT INTO <tableName>(col1, col2, ...) VALUES(?, ?, ...) 3. INSERT INTO <tableName> VALUES(?, ?, ...)");
+			throw new SQLException("Unsupported Syntax for INSERT. Supported Syntaxes are: 1. INSERT INTO <dbName>.<tableName> (col1, col2, ...) VALUES (<literal|?>, ...) 2. INSERT INTO <tableName>(col1, col2, ...) VALUES(<literal|?>, ...) 3. INSERT INTO <tableName> VALUES(<literal|?>, ...). Function calls and subqueries are not permitted in the VALUES list.");
 		}
 	}
 
@@ -446,7 +446,7 @@ public class SyncLiteUtils {
 
 		// Check if the input string matches the pattern
 		if (!matcher.matches()) {
-			throw new SQLException("Unsupported Syntax for UPDATE. Supported Syntax is: UPDATE [<dbName>.]<tableName> SET col1 = <value|?> [, col2 = <value|?>] [WHERE col1 = <value|?> [AND col2 = <value|?>]]. Subqueries are not permitted.");
+			throw new SQLException("Unsupported Syntax for UPDATE. Supported Syntax is: UPDATE [<dbName>.]<tableName> SET col1 = <literal|?> [, col2 = <literal|?>] [WHERE col1 = <literal|?> [AND col2 = <literal|?>]]. Subqueries and function calls are not permitted.");
 		}
 	}
 
@@ -457,7 +457,7 @@ public class SyncLiteUtils {
 
 		// Check if the input string matches the pattern
 		if (!matcher.matches()) {
-			throw new SQLException("Unsupported Syntax for DELETE. Supported Syntax is: DELETE FROM [<dbName>.]<tableName> [WHERE col1 = <value|?> [AND col2 = <value|?>]]. Subqueries are not permitted.");
+			throw new SQLException("Unsupported Syntax for DELETE. Supported Syntax is: DELETE FROM [<dbName>.]<tableName> [WHERE col1 = <literal|?> [AND col2 = <literal|?>]]. Subqueries and function calls are not permitted.");
 		}
 	}
 
