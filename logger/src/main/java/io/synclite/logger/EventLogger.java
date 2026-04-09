@@ -46,7 +46,7 @@ public abstract class EventLogger extends SQLLogger {
 			if (restartSlaveCommitID < restartMasterCommitID) {
 				throw new SQLException("Restart recovery failed. Database commit with id : " + restartMasterCommitID + " cannot be larger than last logged commit id : " + restartSlaveCommitID + " in the current log segment : " + logPath);
 			} else if (restartSlaveCommitID > restartMasterCommitID) {
-				//Streaming, Telemetry and Appender device always performs a 2PC for all operations. 
+				//Streaming, DBLogger and Appender device always performs a 2PC for all operations. 
 				//Hence delete logs for last txn as it was not committed on local/master device.  
 				undoLogsForCommit(restartSlaveCommitID);
 				if (this.allowsConcurrentWrites) {
@@ -97,7 +97,7 @@ public abstract class EventLogger extends SQLLogger {
 			metadataMgr.insertProperty("device_type", options.getDeviceType().toString());
 		} else {
 			if (SyncLiteUtils.isTransactionalDevice(strVal)) {
-				throw new SQLException("SyncLite : This device type : " + strVal + " is not a SyncLite telemetry, streaming or an appender device. ");
+				throw new SQLException("SyncLite : This device type : " + strVal + " is not a SyncLite DBLogger, streaming, appender or store device. ");
 			}
 		}
 		
@@ -111,32 +111,32 @@ public abstract class EventLogger extends SQLLogger {
 	
 	@Override
 	protected String getLogSegmentSignature() {
-		return Telemetry.getLogSegmentSignature();
+		return DBLogger.getLogSegmentSignature();
 	}
 
 	@Override
 	protected String getMetadtaFileSuffix() {
-		return Telemetry.getMetadataFileSuffix();
+		return DBLogger.getMetadataFileSuffix();
 	}
 
 	@Override
 	protected Path getMetadataFilePath(Path dbPath) {
-		return Telemetry.getMetadataFilePath(dbPath);
+		return DBLogger.getMetadataFilePath(dbPath);
 	}
 
 	@Override
 	protected String getWriteArchiveNamePrefix() {
-		return Telemetry.getWriteArchiveNamePrefix();
+		return DBLogger.getWriteArchiveNamePrefix();
 	}
 
 	@Override
 	protected String getReadArchiveNamePrefix() {
-		return Telemetry.getReadArchiveNamePrefix();
+		return DBLogger.getReadArchiveNamePrefix();
 	}
 
 	@Override
 	protected String getDataBackupSuffix() {
-		return Telemetry.getDataBackupSuffix();
+		return DBLogger.getDataBackupSuffix();
 	}
 
 	@Override
@@ -155,7 +155,7 @@ public abstract class EventLogger extends SQLLogger {
 	}
 
 	public static void removeTxnFile(Path dbPath, long logSegmentSequenceNumber, long commitID) {
-		Path txnFilePath = Telemetry.getTxnFilePath(dbPath, logSegmentSequenceNumber, commitID);
+		Path txnFilePath = DBLogger.getTxnFilePath(dbPath, logSegmentSequenceNumber, commitID);
 		try {
 			Files.delete(txnFilePath);
 		} catch (IOException e) {

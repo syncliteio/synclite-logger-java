@@ -20,7 +20,7 @@ import java.sql.SQLException;
 
 import org.sqlite.SQLiteConnection;
 
-public class StreamingStatement extends TelemetryStatement {
+public class StreamingStatement extends DBLoggerStatement {
 
 	protected StreamingStatement(SQLiteConnection conn) throws SQLException {
 		super(conn);

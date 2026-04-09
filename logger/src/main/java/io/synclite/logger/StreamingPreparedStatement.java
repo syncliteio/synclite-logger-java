@@ -20,13 +20,13 @@ import java.sql.SQLException;
 
 import org.sqlite.SQLiteConnection;
 
-public class StreamingPreparedStatement extends TelemetryPreparedStatement {
+public class StreamingPreparedStatement extends DBLoggerPreparedStatement {
 	public StreamingPreparedStatement(SQLiteConnection conn, String sql) throws SQLException {
 		super(conn, sql);
     	String strippedSql = sql.strip();
     	String tokens[] = strippedSql.split("\\s+");
     	if (tokens[0].equalsIgnoreCase("INSERT") && tokens[1].equalsIgnoreCase("INTO")) {
-    		SyncLiteUtils.validateInsertForTelemetryAndAppender(strippedSql);
+    		SyncLiteUtils.validateInsertForDBLoggerAndAppender(strippedSql);
     	} else if ((tokens[0].equalsIgnoreCase("CREATE") || tokens[0].equalsIgnoreCase("DROP") || tokens[0].equalsIgnoreCase("ALTER")) &&
     			(tokens[1].equalsIgnoreCase("TABLE"))
     			) {
@@ -49,7 +49,7 @@ public class StreamingPreparedStatement extends TelemetryPreparedStatement {
 
 	@Override
 	protected final void log(Object[] args) throws SQLException {
-		long commitId = ((TelemetryConnection ) this.conn).getCommitId();
+		long commitId = ((DBLoggerConnection ) this.conn).getCommitId();
 		if (batchQueryCount == 0) {			
 			getCommandStager().log(commitId, this.sql, args);
 		} else if (batchQueryCount == 1){

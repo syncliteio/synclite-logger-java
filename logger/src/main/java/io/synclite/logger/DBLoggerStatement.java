@@ -25,15 +25,15 @@ import java.util.List;
 import org.sqlite.SQLiteConnection;
 import org.sqlite.jdbc4.JDBC4Statement;
 
-public class TelemetryStatement extends JDBC4Statement {
+public class DBLoggerStatement extends JDBC4Statement {
 	private SQLLogger sqlLogger;
-	protected TelemetryStatement(SQLiteConnection conn) throws SQLException {
+	protected DBLoggerStatement(SQLiteConnection conn) throws SQLException {
 		super(conn);
 		this.sqlLogger = EventLogger.findInstance(getConn().getPath());
 	}
 
-	protected TelemetryConnection getConn() {
-		return ((TelemetryConnection ) this.conn);
+	protected DBLoggerConnection getConn() {
+		return ((DBLoggerConnection ) this.conn);
 	}
 
 	private final void logOper(String sql) throws SQLException {
@@ -105,13 +105,13 @@ public class TelemetryStatement extends JDBC4Statement {
 		} else if (tokens[0].equalsIgnoreCase("PUBLISH") && tokens[1].equalsIgnoreCase("COLUMN") && tokens[2].equalsIgnoreCase("LIST")) {	
 			result = executePublishColumnList(sql, tokens);
 		} else if (tokens[0].equalsIgnoreCase("UPDATE")) {
-			SyncLiteUtils.validateUpdateForTelemetryAndAppender(sql.trim());
+			SyncLiteUtils.validateUpdateForDBLoggerAndAppender(sql.trim());
 			result = executeUpdateDML(sql);
 		} else {
 			try {
-				SyncLiteUtils.checkAndExecuteInternalTelemetrySql(sql);
+				SyncLiteUtils.checkAndExecuteInternalDBLoggerSql(sql);
 			} catch (SQLException e) {
-				throw new SQLException("Unsupported SQL : SyncLite telemetry device does not support SQL : " + sql + ". Supported SQLs are CREATE TABLE, DROP TABLE, ALTER TABLE, INSERT INTO, UPDATE, DELETE, COPY, SELECT");
+				throw new SQLException("Unsupported SQL : SyncLite DBLogger device does not support SQL : " + sql + ". Supported SQLs are CREATE TABLE, DROP TABLE, ALTER TABLE, INSERT INTO, UPDATE, DELETE, COPY, SELECT");
 			}
 		}    	
 		return result;
@@ -120,7 +120,7 @@ public class TelemetryStatement extends JDBC4Statement {
 	private boolean executeAlterColumnDDL(String sql, String[] tokens) throws SQLException {
 		//
 		//SQLite does not support alter column
-		//We are supporting this only for telemetry device as below 
+		//We are supporting this only for DBLogger device as below 
 		//1. Drop column (unlogged)
 		//2. Create Column (unlogged)
 		//3. log ALTER COLUMN DDL

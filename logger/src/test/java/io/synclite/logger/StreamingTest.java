@@ -141,7 +141,7 @@ class StreamingTest {
             conn.setAutoCommit(false);
 
             // Attempt UPDATE - streaming device allows only DDL and INSERT.
-            // Use ? params so telemetry parent validation passes and StreamingPreparedStatement throws its own error.
+            // Use ? params so DBLogger parent validation passes and StreamingPreparedStatement throws its own error.
             SQLException updateEx = assertThrows(SQLException.class, () -> {
                 conn.prepareStatement("UPDATE test_table SET value = ? WHERE name = ?");
             }, "Streaming device should reject UPDATE");
@@ -149,7 +149,7 @@ class StreamingTest {
                     "Error message should indicate unsupported SQL, got: " + updateEx.getMessage());
 
             // Attempt DELETE - streaming device allows only DDL and INSERT.
-            // Use ? params so telemetry parent validation passes and StreamingPreparedStatement throws its own error.
+            // Use ? params so DBLogger parent validation passes and StreamingPreparedStatement throws its own error.
             SQLException deleteEx = assertThrows(SQLException.class, () -> {
                 conn.prepareStatement("DELETE FROM test_table WHERE name = ?");
             }, "Streaming device should reject DELETE");

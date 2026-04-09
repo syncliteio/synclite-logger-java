@@ -182,7 +182,7 @@ abstract class SQLStager {
 	public static void removeOrphanCmdFiles(Path dbPath) {
 		Path dbDir = Path.of(dbPath.toString() + ".synclite");
 		
-		String cmdFileSuffix = Telemetry.getSqlFileSignature();
+		String cmdFileSuffix = DBLogger.getSqlFileSignature();
 		try (DirectoryStream<Path> stream = Files.newDirectoryStream(dbDir)) {
             for (Path entry : stream) {
             	if (entry.getFileName().toString().endsWith(cmdFileSuffix)) {

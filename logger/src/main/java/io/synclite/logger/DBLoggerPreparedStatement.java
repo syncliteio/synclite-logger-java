@@ -22,23 +22,23 @@ import java.util.List;
 import org.sqlite.SQLiteConnection;
 import org.sqlite.jdbc4.JDBC4PreparedStatement;
 
-public class TelemetryPreparedStatement extends JDBC4PreparedStatement {
+public class DBLoggerPreparedStatement extends JDBC4PreparedStatement {
 	private SQLLogger sqlLogger;
 	private boolean isDDL = false;
-	public TelemetryPreparedStatement(SQLiteConnection conn, String sql) throws SQLException {
+	public DBLoggerPreparedStatement(SQLiteConnection conn, String sql) throws SQLException {
 		super(conn, sql);
 		List<String> subSqls = SyncLiteUtils.splitSqls(sql);
 		if (subSqls.size() > 1) {
-			throw new SQLException("Unsupported SQL: SyncLite Telemetry supports a single SQL statement as part of a PreparedStatement, multiple specified  : " + sql);			
+			throw new SQLException("Unsupported SQL: SyncLite DBLogger supports a single SQL statement as part of a PreparedStatement, multiple specified  : " + sql);			
 		}
 		String stippedSql = subSqls.get(0).strip();
 		String[] tokens = stippedSql.split("\\s+");		
 		if (tokens[0].equalsIgnoreCase("INSERT") && tokens[1].equalsIgnoreCase("INTO")) {
-			SyncLiteUtils.validateInsertForTelemetryAndAppender(stippedSql);
+			SyncLiteUtils.validateInsertForDBLoggerAndAppender(stippedSql);
 		} else if (tokens[0].equalsIgnoreCase("UPDATE")) {
-			SyncLiteUtils.validateUpdateForTelemetryAndAppender(stippedSql);			
+			SyncLiteUtils.validateUpdateForDBLoggerAndAppender(stippedSql);			
 		} else if (tokens[0].equalsIgnoreCase("DELETE") && tokens[1].equalsIgnoreCase("FROM")) {
-			SyncLiteUtils.validateDeleteForTelemetryAndAppender(stippedSql);			
+			SyncLiteUtils.validateDeleteForDBLoggerAndAppender(stippedSql);			
 		} else if ((tokens[0].equalsIgnoreCase("CREATE") || tokens[0].equalsIgnoreCase("DROP") || tokens[0].equalsIgnoreCase("ALTER")) &&
 				(tokens[1].equalsIgnoreCase("TABLE"))
 				) {
@@ -51,8 +51,8 @@ public class TelemetryPreparedStatement extends JDBC4PreparedStatement {
 		this.sqlLogger = EventLogger.findInstance(getConn().getPath());
 	}
 
-	protected TelemetryConnection getConn() {
-		return ((TelemetryConnection ) this.conn);
+	protected DBLoggerConnection getConn() {
+		return ((DBLoggerConnection ) this.conn);
 	}
 
 	private final void log() throws SQLException {
@@ -64,7 +64,7 @@ public class TelemetryPreparedStatement extends JDBC4PreparedStatement {
 	}
 
 	protected void log(Object[] args) throws SQLException {
-		long commitId = ((TelemetryConnection ) this.conn).getCommitId();
+		long commitId = ((DBLoggerConnection ) this.conn).getCommitId();
 		if (batchQueryCount == 0) {
 			sqlLogger.log(commitId, this.sql, args);
 		} else if (batchQueryCount == 1){
