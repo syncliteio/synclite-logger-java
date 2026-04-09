@@ -23,7 +23,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Properties;
 
-public class StreamingConnection extends TelemetryConnection {
+public class StreamingConnection extends DBLoggerConnection {
 
 	public static final String PREFIX = "jdbc:synclite_streaming:";
 	protected PreparedStatement nativeCommitLoggerPStmt;

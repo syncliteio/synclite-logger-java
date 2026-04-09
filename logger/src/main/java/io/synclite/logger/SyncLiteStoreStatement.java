@@ -63,7 +63,7 @@ public class SyncLiteStoreStatement extends JDBC4Statement {
         String strippedSql = sql.strip();
         String tokens[] = strippedSql.split("\\s+");
         if (tokens[0].equalsIgnoreCase("INSERT") && tokens[1].equalsIgnoreCase("INTO")) {
-            SyncLiteUtils.validateInsertForTelemetryAndAppender(strippedSql);
+            SyncLiteUtils.validateInsertForDBLoggerAndAppender(strippedSql);
             result = executeInsert(sql);
         } else if ((tokens[0].equalsIgnoreCase("CREATE") || tokens[0].equalsIgnoreCase("DROP") || tokens[0].equalsIgnoreCase("ALTER"))
                 && (tokens[1].equalsIgnoreCase("TABLE"))) {
@@ -71,10 +71,10 @@ public class SyncLiteStoreStatement extends JDBC4Statement {
         } else if ((tokens.length == 4) && tokens[0].equalsIgnoreCase("PUBLISH") && tokens[1].equalsIgnoreCase("COLUMN") && tokens[2].equalsIgnoreCase("LIST")) {
             result = executePublishColumnList(sql, tokens);
         } else if (tokens[0].equalsIgnoreCase("UPDATE")) {
-            SyncLiteUtils.validateUpdateForTelemetryAndAppender(strippedSql);
+            SyncLiteUtils.validateUpdateForDBLoggerAndAppender(strippedSql);
             result = executeDML(sql);
         } else if (tokens[0].equalsIgnoreCase("DELETE")) {
-            SyncLiteUtils.validateDeleteForTelemetryAndAppender(strippedSql);
+            SyncLiteUtils.validateDeleteForDBLoggerAndAppender(strippedSql);
             result = executeDML(sql);
         } else {
             try {

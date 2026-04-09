@@ -26,9 +26,9 @@ import java.util.Properties;
 import org.sqlite.SQLiteException;
 import org.sqlite.jdbc4.JDBC4Connection;
 
-public class TelemetryConnection extends JDBC4Connection {
+public class DBLoggerConnection extends JDBC4Connection {
 
-    public static final String PREFIX = "jdbc:synclite_telemetry:";
+    public static final String PREFIX = "jdbc:synclite_dblogger:";
     public static final String commitLoggerSql = "UPDATE synclite_txn SET commit_id = ?, operation_id = ?";
     private boolean userAutoCommit;
     private PreparedStatement commitLoggerPstmt;
@@ -37,7 +37,7 @@ public class TelemetryConnection extends JDBC4Connection {
     protected EventLogger sqlLogger;
     private boolean ready = false;
     private Properties props;
-    public TelemetryConnection(String url, String fileName, Properties prop) throws SQLException {
+    public DBLoggerConnection(String url, String fileName, Properties prop) throws SQLException {
         super(url, fileName, prop);
         this.path = Path.of(fileName);
         this.userAutoCommit = true;
@@ -85,22 +85,22 @@ public class TelemetryConnection extends JDBC4Connection {
     	if (configPathObj != null) {
     		//Try initializing
     		if (deviceName != null) {
-    			Telemetry.initialize(this.path, Path.of(configPathObj.toString()), deviceName.toString());
+    			DBLogger.initialize(this.path, Path.of(configPathObj.toString()), deviceName.toString());
     		} else {
-    			Telemetry.initialize(this.path, Path.of(configPathObj.toString()));
+    			DBLogger.initialize(this.path, Path.of(configPathObj.toString()));
     		}	        		
     	} else {
     		//Try initializing without configs.
     		if (deviceName != null) {
-    			Telemetry.initialize(this.path, deviceName.toString());
+    			DBLogger.initialize(this.path, deviceName.toString());
     		} else {
-    			Telemetry.initialize(this.path);
+    			DBLogger.initialize(this.path);
     		}
     	}
 	}
 
 	protected void initDeviceWithoutProps() throws SQLException {
-		Telemetry.initialize(this.path);
+		DBLogger.initialize(this.path);
 	}
 	
 	protected void doInitConn() throws SQLException {
@@ -143,11 +143,11 @@ public class TelemetryConnection extends JDBC4Connection {
     }
 
     protected Statement connCreateStatement() throws SQLException {
-    	return new TelemetryStatement(this);
+    	return new DBLoggerStatement(this);
     }
 
     protected PreparedStatement connPrepareStatement(String sql) throws SQLException {
-    	return new TelemetryPreparedStatement(this, sql);
+    	return new DBLoggerPreparedStatement(this, sql);
     }
 
     public final PreparedStatement prepareUnloggedStatement(String sql, int rst, int rsc, int rsh) throws SQLException {
@@ -172,7 +172,7 @@ public class TelemetryConnection extends JDBC4Connection {
         	if (e.getMessage().contains("syntax error") || e.getMessage().contains("Parse error")) {
         		//This may be an internal internal SQL supported by SyncLite but not by SQLite
         		try {
-        			pstmt = new InternalTelemetryPreparedStatement(this, sql);
+        			pstmt = new InternalDBLoggerPreparedStatement(this, sql);
         		} catch (SQLiteException e1) {
         			if (e1.getMessage().contains("Unsupported SQL")) {
         				//throw original exception

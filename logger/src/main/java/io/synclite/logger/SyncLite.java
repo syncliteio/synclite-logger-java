@@ -114,9 +114,9 @@ public class SyncLite extends org.sqlite.JDBC {
 		INSTANCES_BY_DEVICE_TYPES.put(DeviceType.HYPERSQL_STORE, instance);
 		INSTANCES_BY_PRREFIXES.put("jdbc:synclite_hsqldb_store:", instance);
 
-		instance = new Telemetry();
-		INSTANCES_BY_DEVICE_TYPES.put(DeviceType.TELEMETRY, instance);
-		INSTANCES_BY_PRREFIXES.put("jdbc:synclite_telemetry:", instance);
+		instance = new DBLogger();
+		INSTANCES_BY_DEVICE_TYPES.put(DeviceType.DBLOGGER, instance);
+		INSTANCES_BY_PRREFIXES.put("jdbc:synclite_dblogger:", instance);
 
 		instance = new Streaming();
 		INSTANCES_BY_DEVICE_TYPES.put(DeviceType.STREAMING, instance);

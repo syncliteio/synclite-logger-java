@@ -25,12 +25,11 @@ import java.sql.Statement;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.LongSupplier;
 
 public class DeviceWriter {
 	private static final int MAX_SYNCLITE_DEVICE_NAME_LENGTH = 64;
 	private static final String DEFAULT_DEVICE_NAME = "default";
-	private final String createTopicSqlTemplate = "CREATE TABLE IF NOT EXISTS $1 (key TEXT, value TEXT)";
-	private final String insertTopicSqlTemplate = "INSERT INTO $1 (key,value) VALUES (?, ?)";
 
 	private static ConcurrentHashMap<Long, DeviceWriter> writers = new ConcurrentHashMap<Long, DeviceWriter>();
     private HashMap<String, PreparedStatement> topicStmts = new HashMap<String, PreparedStatement>();
@@ -43,10 +42,11 @@ public class DeviceWriter {
 	private final Path deviceFilePath;
 	private String deviceURL;
 	private Connection deviceConn;
-	private TelemetryConnection telemetryDeviceConn;
+	private final LongSupplier operationIdSupplier;
+	private final String topicColumnType;
 	private final SyncLiteOptions options;
 	private final long maxBatchSizeBytes;
-	
+
 	private boolean isInsideTxn;
 	private DeviceWriter(Path dbPath, DeviceType deviceType, SyncLiteOptions options, long mBatchSizeBytes) throws SQLException {
 		try {
@@ -61,18 +61,44 @@ public class DeviceWriter {
 			case STREAMING:
 				this.deviceURL = "jdbc:synclite_streaming:" + deviceFilePath;
 				Streaming.initialize(this.deviceFilePath, options);
-				break;
-			case TELEMETRY:
-				this.deviceURL = "jdbc:synclite_telemetry:" + deviceFilePath;
-				Telemetry.initialize(this.deviceFilePath, options);
+				this.topicColumnType = "TEXT";
 				break;
 			case SQLITE_APPENDER:
-				this.deviceURL = "jdbc:synclite_appender:" + deviceFilePath;
+				this.deviceURL = "jdbc:synclite_sqlite_appender:" + deviceFilePath;
 				SQLiteAppender.initialize(this.deviceFilePath, options);
+				this.topicColumnType = "TEXT";
 				break;
+			case DUCKDB_APPENDER:
+				this.deviceURL = "jdbc:synclite_duckdb_appender:" + deviceFilePath;
+				DuckDBAppender.initialize(this.deviceFilePath, options);
+				this.topicColumnType = "TEXT";
+				break;
+			case DERBY_APPENDER:
+				this.deviceURL = "jdbc:synclite_derby_appender:" + deviceFilePath;
+				DerbyAppender.initialize(this.deviceFilePath, options);
+				this.topicColumnType = "VARCHAR(32672)";
+				break;
+			case H2_APPENDER:
+				this.deviceURL = "jdbc:synclite_h2_appender:" + deviceFilePath;
+				H2Appender.initialize(this.deviceFilePath, options);
+				this.topicColumnType = "VARCHAR(1048576)";
+				break;
+			case HYPERSQL_APPENDER:
+				this.deviceURL = "jdbc:synclite_hsqldb_appender:" + deviceFilePath;
+				HyperSQLAppender.initialize(this.deviceFilePath, options);
+				this.topicColumnType = "LONGVARCHAR";
+				break;
+			default:
+				throw new SQLException("Unsupported device type for KafkaProducer: " + deviceType
+						+ ". Supported: STREAMING, SQLITE_APPENDER, DUCKDB_APPENDER, DERBY_APPENDER, H2_APPENDER, HYPERSQL_APPENDER");
 			}			
 			this.deviceConn = DriverManager.getConnection(deviceURL);
-			this.telemetryDeviceConn = (TelemetryConnection) this.deviceConn;
+			if (this.deviceConn instanceof SyncLiteStoreConnection) {
+				SyncLiteStoreConnection c = (SyncLiteStoreConnection) this.deviceConn;
+				this.operationIdSupplier = c::getOperationId;
+			} else {
+				this.operationIdSupplier = () -> 0L;
+			}
 			this.deviceConn.setAutoCommit(false);
 			this.isInsideTxn = false;
 			this.maxBatchSizeBytes = mBatchSizeBytes;
@@ -88,15 +114,25 @@ public class DeviceWriter {
 		PreparedStatement pstmt;
 		while (true) {
 			try (Statement stmt = deviceConn.createStatement()) {
-				stmt.execute(createTopicSqlTemplate.replace("$1", topicName));
-				pstmt = deviceConn.prepareStatement(insertTopicSqlTemplate.replace("$1", topicName));
+				try {
+					stmt.execute("CREATE TABLE " + topicName
+							+ " (key " + topicColumnType + ", value " + topicColumnType + ")");
+				} catch (SQLException createEx) {
+					// Not all backends support IF NOT EXISTS; ignore "table already exists" errors.
+					String msg = createEx.getMessage() == null ? "" : createEx.getMessage().toLowerCase();
+					String state = createEx.getSQLState() == null ? "" : createEx.getSQLState();
+					if (!state.startsWith("X0Y32") && !msg.contains("already exists") && !msg.contains("already defined")) {
+						throw createEx;
+					}
+				}
+				pstmt = deviceConn.prepareStatement(
+						"INSERT INTO " + topicName + " (key, value) VALUES (?, ?)");
 				break;
 			} catch (SQLException e) {
-				if (e.getMessage().contains("SQLITE_BUSY")) {
+				if (e.getMessage() != null && e.getMessage().contains("SQLITE_BUSY")) {
 					continue;
-				} else {
-					throw new SQLException("Failed to initialize topic : " + topicName + " : " + e.getMessage(), e);
 				}
+				throw new SQLException("Failed to initialize topic : " + topicName + " : " + e.getMessage(), e);
 			}
 		}
 		topicStmts.put(topicName, pstmt);
@@ -140,7 +176,7 @@ public class DeviceWriter {
 	
 	private void closeDevice() throws SQLException {
 		try {
-			Streaming.closeDevice(this.deviceFilePath);
+			SyncLite.closeDevice(this.deviceFilePath);
 		} catch (SQLException e) {
 			throw new SQLException("Failed to close device : " + this.deviceFilePath + " : " + e.getMessage(), e);
 		}
@@ -216,7 +252,7 @@ public class DeviceWriter {
 					commit();
 				}
 			}
-			return telemetryDeviceConn.getOperationId() - 2;
+			return operationIdSupplier.getAsLong() - 2;
 		} catch(SQLException e) {
 			throw new SQLException("Failed to write a record : " + e.getMessage(), e);
 		}

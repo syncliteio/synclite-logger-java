@@ -124,14 +124,17 @@ public class KafkaProducer extends org.apache.kafka.clients.producer.KafkaProduc
 
     	 this.deviceType = DeviceType.STREAMING;
     	 if (this.props.containsKey("device-type")) {
+    		 String dtStr = this.props.get("device-type").toString().toUpperCase();
     		 try {
-    			 this.deviceType = DeviceType.valueOf(this.props.get("device-type").toString());
-    			 if ((this.deviceType != DeviceType.TELEMETRY) && (this.deviceType != DeviceType.STREAMING) && (this.deviceType != DeviceType.SQLITE_APPENDER)) {
-    				 throw new ConfigException("Specified device-type : " + this.deviceType + " is not supported. Supported SyncLite device types are STREAMING, TELEMETRY and APPENDER");
-    			 }
-    		 } catch(Exception e) {
-    			 throw new ConfigException("Specified device-type : " + this.deviceType + " is invalid");
-    		 }    		 
+    			 this.deviceType = DeviceType.valueOf(dtStr);
+    		 } catch (IllegalArgumentException e) {
+    			 throw new ConfigException("Specified device-type : " + dtStr + " is invalid. "
+    			 	+ "Supported values: STREAMING, SQLITE_APPENDER, DUCKDB_APPENDER, DERBY_APPENDER, H2_APPENDER, HYPERSQL_APPENDER");
+    		 }
+    		 if (!isSupportedDeviceType(this.deviceType)) {
+    			 throw new ConfigException("Specified device-type : " + this.deviceType + " is not supported. "
+    			 	+ "Supported values: STREAMING, SQLITE_APPENDER, DUCKDB_APPENDER, DERBY_APPENDER, H2_APPENDER, HYPERSQL_APPENDER");
+    		 }
     	 } 
 		 
          if (!options.isLocalDataStageDirectorySpecified()) {
@@ -145,20 +148,17 @@ public class KafkaProducer extends org.apache.kafka.clients.producer.KafkaProduc
          }
     }
 
-	private static <T> T getConfiguredInstance(Properties properties, String configKey, Class<T> defaultClass) {
-        String className = properties.getProperty(configKey);
-        if (className == null) {
-            try {
-                return defaultClass.getDeclaredConstructor().newInstance();
-            } catch (Exception e) {
-                throw new RuntimeException("Failed to instantiate default class for " + configKey, e);
-            }
-        }
-        try {
-            Class<?> clazz = Class.forName(className);
-            return (T) clazz.getDeclaredConstructor().newInstance();
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to instantiate class for " + configKey, e);
+    private static boolean isSupportedDeviceType(DeviceType dt) {
+        switch (dt) {
+            case STREAMING:
+            case SQLITE_APPENDER:
+            case DUCKDB_APPENDER:
+            case DERBY_APPENDER:
+            case H2_APPENDER:
+            case HYPERSQL_APPENDER:
+                return true;
+            default:
+                return false;
         }
     }
 
@@ -185,26 +185,14 @@ public class KafkaProducer extends org.apache.kafka.clients.producer.KafkaProduc
     private Future<RecordMetadata> doSend(ProducerRecord<String, String> record, Callback callback) {
 		CompletableFuture<RecordMetadata> future = new CompletableFuture<>();
 		try {
-			// Simulate message sending logic
-			// Serialize the key and value
-			//byte[] serializedKey = keySerializer.serialize(record.topic(), record.headers(), record.key());
-			//byte[] serializedValue = valueSerializer.serialize(record.topic(), record.headers(), record.value());
-
-			// Print the key and value
-			//System.out.println("Sending message with key: " + record.key() + " and value: " + record.value());
-						
 			long offset = writeMessage(record.topic(), record.key(), record.value());
-			
 			TopicPartition partition = new TopicPartition(record.topic(), 0);
 			long timestamp = System.currentTimeMillis();
-			//long serializedKeySize = serializedKey != null ? serializedKey.length : -1;
-			//long serializedValueSize = serializedValue != null ? serializedValue.length : -1;
-
 			RecordMetadata metadata = new RecordMetadata(
-					partition, 
-					offset, 
+					partition,
+					offset,
 					0,
-					timestamp, 
+					timestamp,
 					record.key().length(),
 					record.value().length()
 					);
@@ -256,15 +244,10 @@ public class KafkaProducer extends org.apache.kafka.clients.producer.KafkaProduc
     	throw new IllegalStateException("Unsupported operation rollbackTransaction in SyncLite KafkaProducer");    	
     }
 
-    final private long writeMessage(String topic, String key, String value) throws Exception{
-    	//get or create device    	
-    	DeviceWriter wrt = DeviceWriter.getInstance(this.dbPath, this.deviceType, this.options, this.maxBatchSizeBytes);    	
-    	//write record    	
-    	//One writer can be used by one thread at any point.
-    	synchronized(wrt) {
-	    	long offset = wrt.write(topic, key, value);
-	    	return offset;
-    	}
+    final private long writeMessage(String topic, String key, String value) throws Exception {
+    	// Writer is per-thread (keyed by thread ID) — no external synchronisation needed.
+    	DeviceWriter wrt = DeviceWriter.getInstance(this.dbPath, this.deviceType, this.options, this.maxBatchSizeBytes);
+    	return wrt.write(topic, key, value);
     }
     
     @Override

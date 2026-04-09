@@ -35,7 +35,7 @@ public abstract class DBProcessor {
 	public static DBProcessor getInstance(DeviceType deviceType) throws SQLException {
 		switch (deviceType) {
 		case SQLITE:
-		case TELEMETRY:
+		case DBLOGGER:
 		case SQLITE_APPENDER:
 		case SQLITE_STORE:
 			return new SQLiteProcessor();

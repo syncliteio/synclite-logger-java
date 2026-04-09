@@ -34,16 +34,16 @@ public class SyncLiteStorePreparedStatement extends JDBC4PreparedStatement {
         String strippedSql = sql.strip();
         String tokens[] = strippedSql.split("\\s+");
         if (tokens[0].equalsIgnoreCase("INSERT") && tokens[1].equalsIgnoreCase("INTO")) {
-            SyncLiteUtils.validateInsertForTelemetryAndAppender(strippedSql);
+            SyncLiteUtils.validateInsertForDBLoggerAndAppender(strippedSql);
         } else if ((tokens[0].equalsIgnoreCase("CREATE") || tokens[0].equalsIgnoreCase("DROP") || tokens[0].equalsIgnoreCase("ALTER"))
                 && (tokens[1].equalsIgnoreCase("TABLE"))) {
             // Allowed DDL
         } else if (tokens[0].equalsIgnoreCase("SELECT")) {
             // Allowed
         } else if (tokens[0].equalsIgnoreCase("UPDATE")) {
-            SyncLiteUtils.validateUpdateForTelemetryAndAppender(strippedSql);
+            SyncLiteUtils.validateUpdateForDBLoggerAndAppender(strippedSql);
         } else if (tokens[0].equalsIgnoreCase("DELETE")) {
-            SyncLiteUtils.validateDeleteForTelemetryAndAppender(strippedSql);
+            SyncLiteUtils.validateDeleteForDBLoggerAndAppender(strippedSql);
         } else {
             throw new SQLException("Unsupported SQL: SyncLite store device does not allow SQL : " + sql
                     + ". Allowed SQLs are CREATE TABLE, DROP TABLE, ALTER TABLE, INSERT INTO, UPDATE, DELETE, SELECT");

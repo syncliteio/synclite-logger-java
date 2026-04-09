@@ -85,7 +85,7 @@ public class Main {
 		{			
 			setupHome();
 			Class.forName("io.synclite.logger.SQLite");
-			Class.forName("io.synclite.logger.Telemetry");
+			Class.forName("io.synclite.logger.DBLogger");
 			Class.forName("io.synclite.logger.SQLiteAppender");
 			Class.forName("io.synclite.logger.DuckDB");
 			Class.forName("io.synclite.logger.Derby");
@@ -175,9 +175,9 @@ public class Main {
 	}
 
 	private static void testTelemetry() throws SQLException, ClassNotFoundException {
-		Class.forName("io.synclite.logger.Telemetry");
+		Class.forName("io.synclite.logger.DBLogger");
 		Path dbPath = syncLiteDB.resolve("testTelemetry.db");
-		String url = "jdbc:synclite_telemetry:" + dbPath;
+		String url = "jdbc:synclite_dblogger:" + dbPath;
 		{
 			SyncLiteOptions options = new SyncLiteOptions();
 			//options.setDestinationType(1, DestinationType.FS);
@@ -188,7 +188,7 @@ public class Main {
 			options.setDestinationType(1, DestinationType.FS);
 			options.setLocalDataStageDirectory(1, syncLiteStage);
 			options.setDeviceName("testTelemetry");
-			Telemetry.initialize(dbPath, options);
+			DBLogger.initialize(dbPath, options);
 
 			try (Connection conn = DriverManager.getConnection(url)) {
 				try (Statement stmt = conn.createStatement()) {
@@ -233,9 +233,9 @@ public class Main {
 
 
 	private static void testTelemetryInsertColList() throws SQLException, ClassNotFoundException {
-		Class.forName("io.synclite.logger.Telemetry");
+		Class.forName("io.synclite.logger.DBLogger");
 		Path dbPath = syncLiteDB.resolve("testTelemetryInsertColList.db");
-		String url = "jdbc:synclite_telemetry:" + dbPath;
+		String url = "jdbc:synclite_dblogger:" + dbPath;
 		{
 			SyncLiteOptions options = new SyncLiteOptions();
 			//options.setDestinationType(1, DestinationType.FS);
@@ -246,7 +246,7 @@ public class Main {
 			options.setDestinationType(1, DestinationType.FS);
 			options.setLocalDataStageDirectory(1, syncLiteStage);
 			options.setDeviceName("testTelemetryInsertColList");
-			Telemetry.initialize(dbPath, options);
+			DBLogger.initialize(dbPath, options);
 
 			try (Connection conn = DriverManager.getConnection(url)) {
 				try (Statement stmt = conn.createStatement()) {

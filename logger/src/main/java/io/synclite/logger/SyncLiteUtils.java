@@ -37,20 +37,20 @@ import io.synclite.logger.MultiWriterDBProcessor.Column;
 public class SyncLiteUtils {
 
 	// Define the regular expression pattern for the allowed INSERT syntaxes
-	private static final String INSERT_TELEMETRY_APPENDER_PATTERN_STR = "INSERT\\s+INTO\\s+(\\w+\\.)?\\w+\\s*(?:\\(([^)]+)\\))?\\s*VALUES\\s*\\(([^)]+)\\)";
+	private static final String INSERT_DBLOGGER_APPENDER_PATTERN_STR = "INSERT\\s+INTO\\s+(\\w+\\.)?\\w+\\s*(?:\\(([^)]+)\\))?\\s*VALUES\\s*\\(([^)]+)\\)";
 
 	// UPDATE: requires SET; WHERE is optional; blocks subqueries and function/UDF calls
-	private static final String UPDATE_TELEMETRY_APPENDER_PATTERN_STR = "UPDATE\\s+(\\w+\\.)?\\w+\\s+SET\\s+(?!.*\\bSELECT\\b)(?!.*\\w\\s*\\().+";
+	private static final String UPDATE_DBLOGGER_APPENDER_PATTERN_STR = "UPDATE\\s+(\\w+\\.)?\\w+\\s+SET\\s+(?!.*\\bSELECT\\b)(?!.*\\w\\s*\\().+";
 
 	// DELETE: WHERE is optional; blocks subqueries and function/UDF calls
-	private static final String DELETE_TELEMETRY_APPENDER_PATTERN_STR = "DELETE\\s+FROM\\s+(\\w+\\.)?\\w+(?:\\s+WHERE\\s+(?!.*\\bSELECT\\b)(?!.*\\w\\s*\\().+)?";
+	private static final String DELETE_DBLOGGER_APPENDER_PATTERN_STR = "DELETE\\s+FROM\\s+(\\w+\\.)?\\w+(?:\\s+WHERE\\s+(?!.*\\bSELECT\\b)(?!.*\\w\\s*\\().+)?";
 
 	// Create a Pattern object
-	private static Pattern INSERT_TELEMETRY_APPENDER_PATTERN = Pattern.compile(INSERT_TELEMETRY_APPENDER_PATTERN_STR, Pattern.CASE_INSENSITIVE);
+	private static Pattern INSERT_DBLOGGER_APPENDER_PATTERN = Pattern.compile(INSERT_DBLOGGER_APPENDER_PATTERN_STR, Pattern.CASE_INSENSITIVE);
 
-	private static Pattern UPDATE_TELEMETRY_APPENDER_PATTERN = Pattern.compile(UPDATE_TELEMETRY_APPENDER_PATTERN_STR, Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+	private static Pattern UPDATE_DBLOGGER_APPENDER_PATTERN = Pattern.compile(UPDATE_DBLOGGER_APPENDER_PATTERN_STR, Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
 
-	private static Pattern DELETE_TELEMETRY_APPENDER_PATTERN = Pattern.compile(DELETE_TELEMETRY_APPENDER_PATTERN_STR, Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+	private static Pattern DELETE_DBLOGGER_APPENDER_PATTERN = Pattern.compile(DELETE_DBLOGGER_APPENDER_PATTERN_STR, Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
 
 	static final List<String> splitSqls(String sql) {
 		List<String> sqls = new ArrayList<String>();
@@ -224,7 +224,7 @@ public class SyncLiteUtils {
 	}
 
 
-	final static boolean checkAndExecuteInternalTelemetrySql(String sql) throws SQLException {
+	final static boolean checkAndExecuteInternalDBLoggerSql(String sql) throws SQLException {
 		//Check if this is an internal SQL supported by SyncLite
 		//
 		//CLOSE ALL DATABASES
@@ -241,17 +241,17 @@ public class SyncLiteUtils {
 			if (tokens[1].equalsIgnoreCase("ALL")) {
 				if (tokens[2].equalsIgnoreCase("DATABASES")) {
 					validSql = true;
-					Telemetry.closeAllDatabases();
+					DBLogger.closeAllDatabases();
 				} else if (tokens[2].equalsIgnoreCase("DEVICES")) {
 					validSql = true;
-					Telemetry.closeAllDevices();
+					DBLogger.closeAllDevices();
 				}
 			} else if (tokens[1].equalsIgnoreCase("DATABASE")) {
 				validSql = true;
-				Telemetry.closeDatabase(Path.of(tokens[2]));
+				DBLogger.closeDatabase(Path.of(tokens[2]));
 			} else if (tokens[1].equalsIgnoreCase("DEVICE")) {
 				validSql = true;
-				Telemetry.closeDevice(Path.of(tokens[2]));
+				DBLogger.closeDevice(Path.of(tokens[2]));
 			}
 		}		
 		if (validSql == false) {
@@ -332,7 +332,7 @@ public class SyncLiteUtils {
 		//INSERT INTO tab1 VALUES(?, NULL/*AUTOINCREMENT*/, ?, ?, ?)
 		//INSERT INTO tab1 VALUES(?, ?, ?, ?, NULL/*AUTOINCREMENT*/)
 		//
-		Matcher matcher = INSERT_TELEMETRY_APPENDER_PATTERN.matcher(sql);
+		Matcher matcher = INSERT_DBLOGGER_APPENDER_PATTERN.matcher(sql);
 
 		if (!matcher.matches()) {
 			return null;
@@ -428,10 +428,10 @@ public class SyncLiteUtils {
 	}
 
 
-	final static void validateInsertForTelemetryAndAppender(String strippedSql) throws SQLException {
+	final static void validateInsertForDBLoggerAndAppender(String strippedSql) throws SQLException {
 
 		// Create a Matcher object
-		Matcher matcher = INSERT_TELEMETRY_APPENDER_PATTERN.matcher(strippedSql);
+		Matcher matcher = INSERT_DBLOGGER_APPENDER_PATTERN.matcher(strippedSql);
 
 		// Check if the input string matches the pattern
 		if (!matcher.matches()) {
@@ -439,10 +439,10 @@ public class SyncLiteUtils {
 		}
 	}
 
-	final static void validateUpdateForTelemetryAndAppender(String strippedSql) throws SQLException {
+	final static void validateUpdateForDBLoggerAndAppender(String strippedSql) throws SQLException {
 
 		// Create a Matcher object
-		Matcher matcher = UPDATE_TELEMETRY_APPENDER_PATTERN.matcher(strippedSql);
+		Matcher matcher = UPDATE_DBLOGGER_APPENDER_PATTERN.matcher(strippedSql);
 
 		// Check if the input string matches the pattern
 		if (!matcher.matches()) {
@@ -450,10 +450,10 @@ public class SyncLiteUtils {
 		}
 	}
 
-	final static void validateDeleteForTelemetryAndAppender(String strippedSql) throws SQLException {
+	final static void validateDeleteForDBLoggerAndAppender(String strippedSql) throws SQLException {
 
 		// Create a Matcher object
-		Matcher matcher = DELETE_TELEMETRY_APPENDER_PATTERN.matcher(strippedSql);
+		Matcher matcher = DELETE_DBLOGGER_APPENDER_PATTERN.matcher(strippedSql);
 
 		// Check if the input string matches the pattern
 		if (!matcher.matches()) {
@@ -548,7 +548,7 @@ public class SyncLiteUtils {
 		case HYPERSQL_APPENDER:
 		case HYPERSQL_STORE:
 			return true;
-		case TELEMETRY:
+		case DBLOGGER:
 			return false;
 		case STREAMING:
 			return true;

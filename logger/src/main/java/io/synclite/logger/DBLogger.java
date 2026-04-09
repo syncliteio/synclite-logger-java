@@ -23,40 +23,40 @@ import java.util.Properties;
 import org.apache.log4j.Logger;
 import org.sqlite.SQLiteConnection;
 
-public final class Telemetry extends SyncLite {
+public final class DBLogger extends SyncLite {
 
-	private final static String PREFIX = "jdbc:synclite_telemetry:";
+	private final static String PREFIX = "jdbc:synclite_dblogger:";
 	
     @Override
 	protected final SQLiteConnection createSyncLiteConnection(String url, Properties prop) throws SQLException {
         if (!checkDeviceURL(url)) {
             return null;       
         }
-        return new TelemetryConnection(url, extractAddress(url, PREFIX), prop);
+        return new DBLoggerConnection(url, extractAddress(url, PREFIX), prop);
     }
         
 	public static synchronized final void initialize(Path dbPath) throws SQLException {
-		SyncLite.initialize(DeviceType.TELEMETRY, dbPath);
+		SyncLite.initialize(DeviceType.DBLOGGER, dbPath);
 	}
 
 	public static synchronized final void initialize(Path dbPath, String deviceName) throws SQLException {
-		SyncLite.initialize(DeviceType.TELEMETRY, dbPath, deviceName);
+		SyncLite.initialize(DeviceType.DBLOGGER, dbPath, deviceName);
 	}
 
 	public static synchronized final void initialize(Path dbPath, SyncLiteOptions options) throws SQLException {
-		SyncLite.initialize(DeviceType.TELEMETRY, dbPath, options);
+		SyncLite.initialize(DeviceType.DBLOGGER, dbPath, options);
 	}
 
 	public static synchronized final void initialize(Path dbPath, SyncLiteOptions options, String deviceName) throws SQLException {
-		SyncLite.initialize(DeviceType.TELEMETRY, dbPath, options, deviceName);
+		SyncLite.initialize(DeviceType.DBLOGGER, dbPath, options, deviceName);
 	}
 
 	public static synchronized final void initialize(Path dbPath, Path propsPath) throws SQLException {
-		SyncLite.initialize(DeviceType.TELEMETRY, dbPath, propsPath);
+		SyncLite.initialize(DeviceType.DBLOGGER, dbPath, propsPath);
 	}
 
 	public static synchronized final void initialize(Path dbPath, Path propsPath, String deviceName) throws SQLException {
-		SyncLite.initialize(DeviceType.TELEMETRY, dbPath, propsPath, deviceName);
+		SyncLite.initialize(DeviceType.DBLOGGER, dbPath, propsPath, deviceName);
 	}
     
     @Override
@@ -80,7 +80,7 @@ public final class Telemetry extends SyncLite {
 
 	@Override
 	protected void setDeviceTypeInOptions(SyncLiteOptions options) throws SQLException {
-		options.SetDeviceType(DeviceType.TELEMETRY);
+		options.SetDeviceType(DeviceType.DBLOGGER);
 	}
 
 	@Override

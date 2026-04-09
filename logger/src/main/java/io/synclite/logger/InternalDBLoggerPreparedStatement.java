@@ -21,11 +21,11 @@ import java.sql.SQLException;
 import org.sqlite.SQLiteConnection;
 import org.sqlite.jdbc4.JDBC4PreparedStatement;
 
-public class InternalTelemetryPreparedStatement extends JDBC4PreparedStatement {
+public class InternalDBLoggerPreparedStatement extends JDBC4PreparedStatement {
 
 	private final static String mockSql = "Select 1";
 	private final String internalSql;
-	public InternalTelemetryPreparedStatement(SQLiteConnection conn, String sql) throws SQLException {
+	public InternalDBLoggerPreparedStatement(SQLiteConnection conn, String sql) throws SQLException {
 		super(conn, mockSql);
 		SyncLiteUtils.checkInternalSql(sql);
 		this.internalSql = sql;		
@@ -33,7 +33,7 @@ public class InternalTelemetryPreparedStatement extends JDBC4PreparedStatement {
 	
 	@Override
     public final boolean execute() throws SQLException {
-    	SyncLiteUtils.checkAndExecuteInternalTelemetrySql(internalSql);
+    	SyncLiteUtils.checkAndExecuteInternalDBLoggerSql(internalSql);
     	return false;
     }
     @Override

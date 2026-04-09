@@ -32,7 +32,7 @@ public class EventSQLStager extends SQLStager {
 		commit();
 		close();
 		try {
-			Path publishFilePath = Telemetry.getTxnFilePath(dbPath, logSeqNum, commitID);
+			Path publishFilePath = DBLogger.getTxnFilePath(dbPath, logSeqNum, commitID);
 			Files.move(this.txnFilePath, publishFilePath);
 		} catch (IOException e) {
 			throw new SQLException("Failed to publish transaction file : " + this.txnFilePath  + " for log sequence number :" + logSeqNum + ", commit id : " + commitID + " : " + e.getMessage(), e);
@@ -40,7 +40,7 @@ public class EventSQLStager extends SQLStager {
 	}
 	
 	public static void removeTxnFile(Path dbPath, long logSegmentSequenceNumber, long commitID) {
-		Path txnFilePath = Telemetry.getTxnFilePath(dbPath, logSegmentSequenceNumber, commitID);
+		Path txnFilePath = DBLogger.getTxnFilePath(dbPath, logSegmentSequenceNumber, commitID);
 		try {
 			Files.delete(txnFilePath);
 		} catch (IOException e) {
