@@ -96,4 +96,16 @@ public class SQLiteStore extends SyncLite {
     protected boolean requiresSQLiteSchemaFile() {
         return false;
     }
+
+    /** SQL type used for String-valued columns auto-added by this backend. */
+    public static String defaultStringType() { return "TEXT"; }
+
+    public static SyncLiteStore open(Path dbPath) throws SQLException {
+        return new SyncLiteStore(dbPath, PREFIX, defaultStringType());
+    }
+
+    public static SyncLiteStore open(Path dbPath, SyncLiteOptions options) throws SQLException {
+        initialize(dbPath, options);
+        return new SyncLiteStore(dbPath, PREFIX, defaultStringType());
+    }
 }

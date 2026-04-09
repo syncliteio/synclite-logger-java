@@ -63,6 +63,9 @@ public class MultiWriterDBAppenderPreparedStatement extends SyncLiteAppenderPrep
 		if (tableNameInDDL != null) {
 			throw new SQLException("DDL statements not permitted with executeQuery function");
 		}    	
+		for (int pos = 0; pos < paramCount; pos++) {
+			pstmt.setObject(pos + 1, batch[batchPos + pos]);
+		}
 		ResultSet rs = pstmt.executeQuery();		
     	return rs;
     }
