@@ -142,6 +142,11 @@ public abstract class MultiWriterDBStoreConnection extends SyncLiteStoreConnecti
     }
 
     @Override
+    protected final PreparedStatement connPrepareStatementTrusted(SyncLiteStoreConnection conn, String sql) throws SQLException {
+        return new MultiWriterDBStorePreparedStatement(this, sql, true);
+    }
+
+    @Override
     public PreparedStatement prepareUnloggedStatement(String sql) throws SQLException {
         return nativeUnloggedPreparedStatement(sql);
     }

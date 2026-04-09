@@ -106,7 +106,7 @@ public class TelemetryStatement extends JDBC4Statement {
 			result = executePublishColumnList(sql, tokens);
 		} else if (tokens[0].equalsIgnoreCase("UPDATE")) {
 			SyncLiteUtils.validateUpdateForTelemetryAndAppender(sql.trim());
-			result = executeUpdate(sql);
+			result = executeUpdateDML(sql);
 		} else {
 			try {
 				SyncLiteUtils.checkAndExecuteInternalTelemetrySql(sql);
@@ -205,7 +205,7 @@ public class TelemetryStatement extends JDBC4Statement {
 		return true;
 	}
 
-	private final boolean executeUpdate(String sql) throws SQLException {
+	private final boolean executeUpdateDML(String sql) throws SQLException {
 		logOper(sql);
 		processCommit();
 		return true;

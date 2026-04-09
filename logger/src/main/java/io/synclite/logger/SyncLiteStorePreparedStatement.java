@@ -52,6 +52,15 @@ public class SyncLiteStorePreparedStatement extends JDBC4PreparedStatement {
         this.tableNameInDDL = SyncLiteUtils.getTableNameFromDDL(sql);
     }
 
+    // Package-private: for use by internal API layers (e.g. SyncLiteStore) that generate SQL
+    // programmatically. Skips DML validation since the SQL is known-good by construction.
+    // External callers in other packages cannot reach this constructor.
+    SyncLiteStorePreparedStatement(SQLiteConnection conn, String sql, boolean trusted) throws SQLException {
+        super(conn, sql);
+        this.sqlLogger = EventLogger.findInstance(getConn().getPath());
+        this.tableNameInDDL = SyncLiteUtils.getTableNameFromDDL(sql);
+    }
+
     protected SyncLiteStoreConnection getConn() {
         return ((SyncLiteStoreConnection) this.conn);
     }

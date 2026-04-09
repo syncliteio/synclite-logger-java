@@ -122,6 +122,17 @@ public class SyncLiteStoreConnection extends JDBC4Connection {
         return new SyncLiteStorePreparedStatement(this, sql);
     }
 
+    // Package-private: creates a PreparedStatement that skips DML validation.
+    // Only callable by classes in this package (e.g. SyncLiteStore).
+    final PreparedStatement prepareTrustedStatement(String sql) throws SQLException {
+        checkOpen();
+        return connPrepareStatementTrusted(this, sql);
+    }
+
+    protected PreparedStatement connPrepareStatementTrusted(SyncLiteStoreConnection conn, String sql) throws SQLException {
+        return new SyncLiteStorePreparedStatement(this, sql, true);
+    }
+
     protected void connCommit() throws SQLException {
         super.commit();
     }
