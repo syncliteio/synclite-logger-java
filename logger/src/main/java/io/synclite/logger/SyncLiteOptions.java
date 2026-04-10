@@ -17,11 +17,14 @@
 package io.synclite.logger;
 
 import java.io.BufferedReader;
-import java.io.FileReader;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -86,7 +89,7 @@ public class SyncLiteOptions {
 		}
 		copy.deviceName = this.deviceName;
 		if (this.excludeTables != null) {
-			copy.excludeTables.addAll(this.excludeTables);
+			copy.excludeTables = new ArrayList<>(this.excludeTables);
 		}
 		for (Map.Entry<Integer, String> entry : this.hosts.entrySet()) {
 			copy.hosts.put(entry.getKey(), entry.getValue());
@@ -95,7 +98,7 @@ public class SyncLiteOptions {
 			copy.ports.put(entry.getKey(), entry.getValue());
 		}
 		if (this.includeTables != null) {
-			copy.includeTables.addAll(this.includeTables);
+			copy.includeTables = new ArrayList<>(this.includeTables);
 		}
 		for (Map.Entry<Integer, HashMap<String,String>> entry : this.kafkaProducerProperties.entrySet()) {
 			HashMap<String, String> props = new HashMap<String, String>();
@@ -283,7 +286,7 @@ public class SyncLiteOptions {
 		return this.uuid;
 	}
 	
-	void SetDeviceType(DeviceType type) throws SQLException {
+	void setDeviceType(DeviceType type) throws SQLException {
 		this.deviceType = type;
 	}
 	
@@ -378,7 +381,7 @@ public class SyncLiteOptions {
 	}
 
 	public void setLogQueueSize(int size) throws SQLException {
-		if (logQueueSize <= 0) {
+		if (size <= 0) {
 			throw new SQLException("SyncLite : Invalid value " + size + " specified for log queue size");
 		}
 		logQueueSize = size;
@@ -438,7 +441,7 @@ public class SyncLiteOptions {
 	}
 
 	public void enableAsyncLoggingForAppenderDevice(boolean async) {
-		disableAsyncLoggingForTxnDevice = async;
+		enableAsyncLoggingForAppenderDevice = async;
 	}
 
 	public void setEncryptionKeyFile(Path pubKeyPath) {
@@ -541,11 +544,11 @@ public class SyncLiteOptions {
 		SyncLiteOptions options = new SyncLiteOptions();
 		options.setTracer(tracer);
 		try {
-			reader = new BufferedReader(new FileReader(propsPath.toFile()));
+			reader = new BufferedReader(new InputStreamReader(new FileInputStream(propsPath.toFile()), StandardCharsets.UTF_8));
 			String line = reader.readLine();
 			while (line != null) {
 				line = line.trim();
-				if (line.trim().isEmpty()) {
+				if (line.isEmpty()) {
 					line = reader.readLine();
 					continue;
 				}
@@ -823,7 +826,7 @@ public class SyncLiteOptions {
 			if (destType == null) {
 				throw new SQLException("SyncLite : Invalid value " + optVal + " specified for destination-type" + propSuffix);
 			} else {
-				options.setDestinationType(1, destType);
+				options.setDestinationType(destIndex, destType);
 			}
 
 			//Parse other properties    			
@@ -1136,9 +1139,9 @@ public class SyncLiteOptions {
 							throw new SQLException("SyncLite : Invalid kafka consumer property specified  : " + propName);
 						} else {
 							options.setKafkaConsumerProperty(destIndex, kafkaPropName, propValue);
-						}						
+						}
+						foundConsumerProps = true;
 					}
-					foundConsumerProps = true;
 				}
 				
 				if (foundConsumerProps) {

@@ -66,13 +66,13 @@ abstract class SQLLogger extends Thread {
 	protected AtomicLong logSegmentSequenceNumber = new AtomicLong(-1);
 	protected AtomicLong dataFileSequenceNumber = new AtomicLong(-1);
 	protected volatile long logSegmentLogCount;
-	protected long currentTxnCommitId;
+	protected volatile long currentTxnCommitId;
 	protected volatile long currentTxnLogCount;
-	protected long currentBatchLogCount;
+	protected volatile long currentBatchLogCount;
 	protected volatile long lastLogSegmentCreateTime;
 	protected long restartMasterCommitID;
 	protected long restartSlaveCommitID;
-	protected long currentOperationId;
+	protected volatile long currentOperationId;
 	protected String restartTxnFate;
 	protected String restartLoggedSQL;
 	protected long backupShipped;
@@ -93,7 +93,7 @@ abstract class SQLLogger extends Thread {
 	private volatile boolean terminateInProgress;
 	protected AtomicBoolean isHealthy = new AtomicBoolean(true);
 	private SyncLiteAppLock appLock = new SyncLiteAppLock();
-	private static AtomicLong latestGeneratedCommitId = new AtomicLong(System.currentTimeMillis());
+	private AtomicLong latestGeneratedCommitId = new AtomicLong(System.currentTimeMillis());
 
 	protected SQLLogger(Path dbPath, SyncLiteOptions options, Logger tracer) throws SQLException {
 		this.options = options;

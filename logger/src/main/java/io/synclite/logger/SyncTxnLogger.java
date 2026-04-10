@@ -23,15 +23,13 @@ import java.sql.Statement;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.locks.ReentrantLock;
-
 import org.apache.log4j.Logger;
 
 public final class SyncTxnLogger extends TxnLogger {
 
     private ScheduledExecutorService segmentCreatorService;
-	private AtomicBoolean txnInProgress = new AtomicBoolean();
+	private final Object txnLock = new Object();
+	private volatile boolean txnInProgress = false;
 
 	public SyncTxnLogger(Path dbPath, SyncLiteOptions options, Logger tracer) throws SQLException {
 		super(dbPath, options, tracer);
@@ -56,8 +54,8 @@ public final class SyncTxnLogger extends TxnLogger {
 	@Override
     protected final void checkups() {  	
 		try  {
-			synchronized (txnInProgress) {
-				if (!txnInProgress.get()) {
+			synchronized (txnLock) {
+				if (!txnInProgress) {
 					super.checkups();
 				}
 			}
@@ -84,8 +82,8 @@ public final class SyncTxnLogger extends TxnLogger {
 		CommandLogRecord rec = new CommandLogRecord(commitId, sql, args);
         if (currentTxnLogCount == 0) {
         	//This is the first log record of the txn
-			synchronized(txnInProgress) {
-				txnInProgress.set(true);
+			synchronized (txnLock) {
+				txnInProgress = true;
 			}
         	logBeginTran(rec);
         }
@@ -96,8 +94,10 @@ public final class SyncTxnLogger extends TxnLogger {
 	void flush(long commitId) throws SQLException {
         executeLogBatch();
         commitLogSegment();
-		synchronized (txnInProgress) {
-			txnInProgress.set(false);
+        this.currentTxnLogCount = 0;
+        this.currentBatchLogCount = 0;
+		synchronized (txnLock) {
+			txnInProgress = false;
 		}
 	}
 
@@ -136,8 +136,8 @@ public final class SyncTxnLogger extends TxnLogger {
 	@Override
 	protected void logRollbackAndFlush(long commitId) throws SQLException {
 		undoLogsForCommit(commitId);
-		synchronized (txnInProgress) {
-			txnInProgress.set(false);
+		synchronized (txnLock) {
+			txnInProgress = false;
 		}
 	}
 

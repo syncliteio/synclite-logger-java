@@ -96,7 +96,7 @@ public final class DuckDBStore extends SyncLite {
 
     @Override
     protected void setDeviceTypeInOptions(SyncLiteOptions options) throws SQLException {
-        options.SetDeviceType(DeviceType.DUCKDB_STORE);
+        options.setDeviceType(DeviceType.DUCKDB_STORE);
     }
 
     @Override

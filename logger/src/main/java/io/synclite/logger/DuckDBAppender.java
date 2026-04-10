@@ -98,7 +98,7 @@ public final class DuckDBAppender extends SyncLite {
 
 	@Override
 	protected void setDeviceTypeInOptions(SyncLiteOptions options) throws SQLException {
-		options.SetDeviceType(DeviceType.DUCKDB_APPENDER);
+		options.setDeviceType(DeviceType.DUCKDB_APPENDER);
 	}
 
 	@Override

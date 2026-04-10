@@ -91,7 +91,7 @@ public final class HyperSQL extends SyncLite {
 
 	@Override
 	protected void setDeviceTypeInOptions(SyncLiteOptions options) throws SQLException {
-		options.SetDeviceType(DeviceType.HYPERSQL);
+		options.setDeviceType(DeviceType.HYPERSQL);
 	}
 
 	@Override

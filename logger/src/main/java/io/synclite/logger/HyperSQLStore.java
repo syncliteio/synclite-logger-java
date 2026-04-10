@@ -90,7 +90,7 @@ public final class HyperSQLStore extends SyncLite {
 
     @Override
     protected void setDeviceTypeInOptions(SyncLiteOptions options) throws SQLException {
-        options.SetDeviceType(DeviceType.HYPERSQL_STORE);
+        options.setDeviceType(DeviceType.HYPERSQL_STORE);
     }
 
     @Override

@@ -92,7 +92,7 @@ public final class H2Appender extends SyncLite {
 
 	@Override
 	protected void setDeviceTypeInOptions(SyncLiteOptions options) throws SQLException {
-		options.SetDeviceType(DeviceType.H2_APPENDER);
+		options.setDeviceType(DeviceType.H2_APPENDER);
 	}
 
 	@Override

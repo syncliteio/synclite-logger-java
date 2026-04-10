@@ -56,7 +56,8 @@ final class AsyncTxnLogger extends TxnLogger {
 			logQueue.put(rec);
 			rec.waitForFlush();
 		} catch (InterruptedException e) {
-			Thread.interrupted();
+			Thread.currentThread().interrupt();
+			throw new SQLException("Commit interrupted before flush completed", e);
 		}
 	}
 
@@ -66,7 +67,8 @@ final class AsyncTxnLogger extends TxnLogger {
 			logQueue.put(rec);
 			rec.waitForFlush();
 		} catch (InterruptedException e) {
-			Thread.interrupted();
+			Thread.currentThread().interrupt();
+			throw new SQLException("Rollback interrupted before flush completed", e);
 		}
 	}
 
@@ -84,7 +86,8 @@ final class AsyncTxnLogger extends TxnLogger {
 		try {
 			logQueue.put(new CommandLogRecord(commitId, sql, args));
 		} catch (InterruptedException e) {
-			Thread.interrupted();
+			Thread.currentThread().interrupt();
+			throw new SQLException("Logger interrupted while queuing log record", e);
 		}
 	}
 
@@ -95,7 +98,8 @@ final class AsyncTxnLogger extends TxnLogger {
 			logQueue.put(flushRecord);
 			flushRecord.waitForFlush();
 		} catch (InterruptedException e) {
-			Thread.interrupted();
+			Thread.currentThread().interrupt();
+			throw new SQLException("Logger interrupted while waiting for flush", e);
 		}
 	}
 
@@ -151,8 +155,15 @@ final class AsyncTxnLogger extends TxnLogger {
 				appendLogRecord(record);
 			} catch (InterruptedException e) {
 				try {
+					// Drain remaining queued records and unblock pending flush waiters
+					CommandLogRecord remaining;
+					while ((remaining = logQueue.poll()) != null) {
+						if (remaining instanceof FlushLogRecord) {
+							((FlushLogRecord) remaining).setFlushed();
+						}
+					}
 					checkups();
-					closeCurrentLogSegment();					
+					closeCurrentLogSegment();
 					break;
 				} catch (SQLException e1) {
 					tracer.error("Closing log segment for logger for device at " + dbPath + " failed with exception : " +  e1);
@@ -177,14 +188,11 @@ final class AsyncTxnLogger extends TxnLogger {
 		//If thread is running then terminate
 		if (this.isAlive()) {
 			try {
-				//Wait until queue is drained
-				while(!logQueue.isEmpty()) {
-					Thread.sleep(1000);
-				}
 				interrupt();
 				join();
 			} catch (InterruptedException e) {
-				stop();
+				Thread.currentThread().interrupt();
+				interrupt(); // Re-signal the logger thread
 			}
 		} else {
 			//Close current log segment

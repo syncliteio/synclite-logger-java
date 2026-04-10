@@ -84,7 +84,7 @@ public class SQLiteStore extends SyncLite {
 
     @Override
     protected void setDeviceTypeInOptions(SyncLiteOptions options) throws SQLException {
-        options.SetDeviceType(DeviceType.SQLITE_STORE);
+        options.setDeviceType(DeviceType.SQLITE_STORE);
     }
 
     @Override
