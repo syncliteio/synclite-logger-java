@@ -10,12 +10,19 @@ package io.synclite.logger;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.Statement;
 import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import org.junit.jupiter.api.AfterEach;
@@ -57,6 +64,10 @@ class SQLiteStoreAPITest {
         try (SyncLiteStore store = SQLiteStore.open(testDbPath)) {
             runAPITest(store);
         }
+        // Flush logs, then cross-check commit_id between synclite_txn and the stage log file.
+        SQLiteStore.closeAllDevices();
+        Thread.sleep(150);
+        validateCommitId(testDbPath, testStageDir);
     }
 
     static void runAPITest(SyncLiteStore store) throws Exception {
@@ -139,6 +150,55 @@ class SQLiteStoreAPITest {
         // Table is gone; a fresh createTable must succeed
         store.createTable("players", Map.of("id", "INTEGER PRIMARY KEY"));
         assertEquals(0, store.selectAll("players").size());
+    }
+
+    // -------------------------------------------------------------------------
+    // Commit-ID validation helpers
+    // -------------------------------------------------------------------------
+
+    /**
+     * Asserts that the max commit_id in synclite_txn matches the latest commit_id
+     * in the most recently modified .sqllog file under stageDir.
+     */
+    private void validateCommitId(Path dbPath, Path stageDir) throws Exception {
+        long commitId;
+        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT MAX(commit_id) FROM synclite_txn")) {
+            assertTrue(rs.next(), "synclite_txn must have a row");
+            commitId = rs.getLong(1);
+            assertTrue(commitId > 0, "commit_id must be positive after store operations");
+        }
+
+        Path latestLogFile = findLatestSqlLog(stageDir);
+        assertNotNull(latestLogFile, "At least one .sqllog file must be created in stageDir");
+
+        long foundCommitId;
+        try (Connection logConn = DriverManager.getConnection("jdbc:sqlite:" + latestLogFile);
+             Statement logStmt = logConn.createStatement();
+             ResultSet logRs = logStmt.executeQuery(
+                     "SELECT commit_id FROM commandlog ORDER BY change_number DESC LIMIT 1")) {
+            assertTrue(logRs.next(), "Latest stage log must contain a commandlog entry");
+            foundCommitId = logRs.getLong("commit_id");
+        }
+
+        assertEquals(commitId, foundCommitId,
+                "commit_id in synclite_txn must match the latest commit in the stage log file");
+    }
+
+    private Path findLatestSqlLog(Path stageDir) throws IOException {
+        Pattern pattern = Pattern.compile("^\\d+\\.sqllog$");
+        Path latest = null;
+        long latestMtime = -1;
+        try (var stream = Files.walk(stageDir)) {
+            for (Path p : stream.collect(Collectors.toList())) {
+                if (!Files.isRegularFile(p)) continue;
+                if (!pattern.matcher(p.getFileName().toString()).matches()) continue;
+                long mtime = Files.getLastModifiedTime(p).toMillis();
+                if (mtime > latestMtime) { latestMtime = mtime; latest = p; }
+            }
+        }
+        return latest;
     }
 
     private void deleteRecursively(Path path) throws IOException {

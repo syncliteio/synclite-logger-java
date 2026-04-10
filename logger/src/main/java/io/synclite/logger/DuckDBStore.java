@@ -111,6 +111,10 @@ public final class DuckDBStore extends SyncLite {
         return new SyncLiteStore(dbPath, PREFIX, defaultStringType());
     }
 
+    public static SyncLiteStore openUnlogged(Path dbPath) throws SQLException {
+        return new SyncLiteStore(dbPath, PREFIX, defaultStringType(), true);
+    }
+
     public static SyncLiteStore open(Path dbPath, SyncLiteOptions options) throws SQLException {
         initialize(dbPath, options);
         return new SyncLiteStore(dbPath, PREFIX, defaultStringType());
