@@ -46,11 +46,23 @@ public class SyncLiteUtils {
 	private static final String DELETE_DBLOGGER_APPENDER_PATTERN_STR = "DELETE\\s+FROM\\s+(\\w+\\.)?\\w+(?:\\s+WHERE\\s+(?!.*\\bSELECT\\b)(?!.*\\w\\s*\\().+)?";
 
 	// Create a Pattern object
-	private static Pattern INSERT_DBLOGGER_APPENDER_PATTERN = Pattern.compile(INSERT_DBLOGGER_APPENDER_PATTERN_STR, Pattern.CASE_INSENSITIVE);
+	private static final Pattern INSERT_DBLOGGER_APPENDER_PATTERN = Pattern.compile(INSERT_DBLOGGER_APPENDER_PATTERN_STR, Pattern.CASE_INSENSITIVE);
 
-	private static Pattern UPDATE_DBLOGGER_APPENDER_PATTERN = Pattern.compile(UPDATE_DBLOGGER_APPENDER_PATTERN_STR, Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+	private static final Pattern UPDATE_DBLOGGER_APPENDER_PATTERN = Pattern.compile(UPDATE_DBLOGGER_APPENDER_PATTERN_STR, Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
 
-	private static Pattern DELETE_DBLOGGER_APPENDER_PATTERN = Pattern.compile(DELETE_DBLOGGER_APPENDER_PATTERN_STR, Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+	private static final Pattern DELETE_DBLOGGER_APPENDER_PATTERN = Pattern.compile(DELETE_DBLOGGER_APPENDER_PATTERN_STR, Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+
+	// Patterns for getTableNameFromDDL — hoisted to avoid recompiling on every call
+	private static final Pattern DDL_CREATE_TABLE_PATTERN = Pattern.compile("CREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?(?:[\\w.]+\\.)?([\\w]+)", Pattern.CASE_INSENSITIVE);
+	private static final Pattern DDL_DROP_TABLE_PATTERN   = Pattern.compile("DROP\\s+TABLE\\s+(?:IF\\s+EXISTS\\s+)?(?:[\\w.]+\\.)?([\\w]+)", Pattern.CASE_INSENSITIVE);
+	private static final Pattern DDL_ALTER_TABLE_PATTERN  = Pattern.compile("ALTER\\s+TABLE\\s+(?:[\\w.]+\\.)?([\\w]+)", Pattern.CASE_INSENSITIVE);
+
+	// Patterns for getDDLStatement ALTER sub-clauses — hoisted to avoid recompiling on every call
+	private static final Pattern DDL_ADD_COLUMN_PATTERN    = Pattern.compile("ADD\\s+(?:COLUMN)?", Pattern.CASE_INSENSITIVE);
+	private static final Pattern DDL_DROP_COLUMN_PATTERN   = Pattern.compile("DROP\\s+(?:COLUMN)?", Pattern.CASE_INSENSITIVE);
+	private static final Pattern DDL_ALTER_COLUMN_PATTERN  = Pattern.compile("ALTER\\s+(?:COLUMN)?", Pattern.CASE_INSENSITIVE);
+	private static final Pattern DDL_RENAME_TO_PATTERN     = Pattern.compile("RENAME\\s+TO", Pattern.CASE_INSENSITIVE);
+	private static final Pattern DDL_RENAME_COLUMN_PATTERN = Pattern.compile("RENAME\\s+(?:COLUMN)?", Pattern.CASE_INSENSITIVE);
 
 	static final List<String> splitSqls(String sql) {
 		List<String> sqls = new ArrayList<String>();
@@ -58,11 +70,29 @@ public class SyncLiteUtils {
 		char[] inputChars = sql.toCharArray();
 		boolean insideSingleQuotedString = false;
 		boolean insideDoubleQuotedString = false;
+		boolean insideLineComment = false;
+		boolean insideBlockComment = false;
 		for (int i=0; i < inputChars.length; ++i) {
+			// -- line comment: skip until end of line
+			if (insideLineComment) {
+				if (inputChars[i] == '\n') {
+					insideLineComment = false;
+				}
+				// characters inside a line comment are not appended
+				continue;
+			}
+			// /* */ block comment: skip until */
+			if (insideBlockComment) {
+				if (inputChars[i] == '*' && (i+1) < inputChars.length && inputChars[i+1] == '/') {
+					insideBlockComment = false;
+					++i; // skip the '/'
+				}
+				// characters inside a block comment are not appended
+				continue;
+			}
 			if (insideSingleQuotedString) {
 				if (inputChars[i] == '\'') {
-					//Check the next char to set if this is end of single quoted string
-					//or is an escape char for a single quote
+					// '' is an escaped single quote; otherwise it closes the string
 					currentSqlBuilder.append(inputChars[i]);
 					if ((i+1) < inputChars.length) {
 						if (inputChars[i+1] == '\'') {
@@ -71,28 +101,40 @@ public class SyncLiteUtils {
 						} else {
 							insideSingleQuotedString = false;
 						}
+					} else {
+						// closing quote is the last character in input
+						insideSingleQuotedString = false;
 					}
 				} else {
 					currentSqlBuilder.append(inputChars[i]);
 				}
 			} else if (insideDoubleQuotedString) {
 				if (inputChars[i] == '\"') {
-					//Check the next char to set if this is end of single quoted string
-					//or is an escape char for a single quote
+					// "" is an escaped double quote; otherwise it closes the identifier
 					currentSqlBuilder.append(inputChars[i]);
-					if (i+1 < inputChars.length) {
+					if ((i+1) < inputChars.length) {
 						if (inputChars[i+1] == '\"') {
 							currentSqlBuilder.append(inputChars[i+1]);
 							++i;
 						} else {
 							insideDoubleQuotedString = false;
 						}
+					} else {
+						// closing quote is the last character in input
+						insideDoubleQuotedString = false;
 					}
 				} else {
 					currentSqlBuilder.append(inputChars[i]);
 				}
 			} else {
-				if (inputChars[i] == ';') {
+				// check for comment starts before any other dispatch
+				if (inputChars[i] == '-' && (i+1) < inputChars.length && inputChars[i+1] == '-') {
+					insideLineComment = true;
+					++i; // skip the second '-'
+				} else if (inputChars[i] == '/' && (i+1) < inputChars.length && inputChars[i+1] == '*') {
+					insideBlockComment = true;
+					++i; // skip the '*'
+				} else if (inputChars[i] == ';') {
 					String nextSql = currentSqlBuilder.toString();
 					if (!nextSql.isBlank()) {
 						sqls.add(nextSql.trim());
@@ -118,9 +160,10 @@ public class SyncLiteUtils {
 
 	static final long nextPowerOf2(long n)
 	{
+		if (n <= 0) return 1;
 		n--;
 		n |= n >> 1;
-					n |= n >> 2;
+		n |= n >> 2;
 		n |= n >> 4;
 		n |= n >> 8;
 		n |= n >> 16;
@@ -162,9 +205,6 @@ public class SyncLiteUtils {
 		//
 		String[] tokens = sql.split("\\s+");
 		boolean validSql = false;
-		if (tokens.length != 3) {
-			throw new SQLException("Unsupported SQL : " + sql);
-		}
 		if (tokens.length != 3) {
 			throw new SQLException("Unsupported SQL : " + sql);
 		}
@@ -483,14 +523,9 @@ public class SyncLiteUtils {
 		String tableName = null;
 
         if (strippedSql.startsWith("CREATE") || strippedSql.startsWith("DROP") || strippedSql.startsWith("ALTER")) {
-            // Define regex patterns for extracting table names with optional clauses
-            Pattern createPattern = Pattern.compile("CREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?(?:[\\w.]+\\.)?([\\w]+)", Pattern.CASE_INSENSITIVE);
-            Pattern dropPattern = Pattern.compile("DROP\\s+TABLE\\s+(?:IF\\s+EXISTS\\s+)?(?:[\\w.]+\\.)?([\\w]+)", Pattern.CASE_INSENSITIVE);
-            Pattern alterPattern = Pattern.compile("ALTER\\s+TABLE\\s+(?:[\\w.]+\\.)?([\\w]+)", Pattern.CASE_INSENSITIVE);
-
-            Matcher createMatcher = createPattern.matcher(strippedSql);
-            Matcher dropMatcher = dropPattern.matcher(strippedSql);
-            Matcher alterMatcher = alterPattern.matcher(strippedSql);
+            Matcher createMatcher = DDL_CREATE_TABLE_PATTERN.matcher(strippedSql);
+            Matcher dropMatcher   = DDL_DROP_TABLE_PATTERN.matcher(strippedSql);
+            Matcher alterMatcher  = DDL_ALTER_TABLE_PATTERN.matcher(strippedSql);
 
             if (createMatcher.find()) {
                 tableName = createMatcher.group(1);
@@ -505,9 +540,10 @@ public class SyncLiteUtils {
 
 
 	final static boolean isDDLIdempotencyException(SQLException e) {
-		if (e.getMessage().contains("already exists") || e.getMessage().contains("no such table") || e.getMessage().contains("duplicate column name") || e.getMessage().contains("no such column")) {
+		String msg = e.getMessage();
+		if (msg != null && (msg.contains("already exists") || msg.contains("no such table") || msg.contains("duplicate column name") || msg.contains("no such column"))) {
 			return true;
-		} 
+		}
 		return false;
 	}
 
@@ -593,8 +629,7 @@ public class SyncLiteUtils {
 	    } else if (strippedSql.startsWith("ALTER")) {
 	    	strippedSql = strippedSql.replaceFirst("^ALTER\\s+TABLE\\s+", "").trim();
 	        // Handle ADD COLUMN
-	        Pattern pattern = Pattern.compile("ADD\\s+(?:COLUMN)?", Pattern.CASE_INSENSITIVE);
-	        Matcher matcher = pattern.matcher(strippedSql);
+	        Matcher matcher = DDL_ADD_COLUMN_PATTERN.matcher(strippedSql);
 	        if (matcher.find()) {
 	            // This is an ADD COLUMN
 	        	
@@ -614,8 +649,7 @@ public class SyncLiteUtils {
 	            }
 	        } else {
 	            // Handle DROP COLUMN
-	            pattern = Pattern.compile("DROP\\s+(?:COLUMN)?", Pattern.CASE_INSENSITIVE);
-	            matcher = pattern.matcher(strippedSql);
+	            matcher = DDL_DROP_COLUMN_PATTERN.matcher(strippedSql);
 	            if (matcher.find()) {
 	                // This is a DROP COLUMN
 
@@ -634,8 +668,7 @@ public class SyncLiteUtils {
 	                }
 	            } else {
 	                // Handle ALTER COLUMN
-	                pattern = Pattern.compile("ALTER\\s+(?:COLUMN)?", Pattern.CASE_INSENSITIVE);
-	                matcher = pattern.matcher(strippedSql);
+	                matcher = DDL_ALTER_COLUMN_PATTERN.matcher(strippedSql);
 	                if (matcher.find()) {
 	                	//Convert given maps to maps with column names as keys
 	                	
@@ -666,19 +699,17 @@ public class SyncLiteUtils {
 	                    return "";
 	                } else {
 	                    // Handle RENAME TO
-	                    pattern = Pattern.compile("RENAME\\s+TO", Pattern.CASE_INSENSITIVE);
-	                    matcher = pattern.matcher(strippedSql);
+	                    matcher = DDL_RENAME_TO_PATTERN.matcher(strippedSql);
 	                    if (matcher.find()) {
-                            String[] words = sql.split("[ \\t]+");
+                            String[] words = sql.split("\\s+");
 	                        String newTableName = words[words.length -1];
 	                        String mappedSql = "ALTER TABLE " + tableName + " RENAME TO " + newTableName;
 	                        return mappedSql;
 	                    } else {
 	                        // Handle RENAME COLUMN
-	                        pattern = Pattern.compile("RENAME\\s+(?:COLUMN)?", Pattern.CASE_INSENSITIVE);
-	                        matcher = pattern.matcher(strippedSql);
+	                        matcher = DDL_RENAME_COLUMN_PATTERN.matcher(strippedSql);
 	                        if (matcher.find()) {
-	                            String[] words = sql.split("[ \\t]+");
+	                            String[] words = sql.split("\\s+");
 	                            if (words.length >= 3 && words[words.length - 2].equalsIgnoreCase("TO")) {
 	                                String oldColumnName = words[words.length - 3];
 	                                String newColumnName = words[words.length - 1];

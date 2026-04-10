@@ -84,7 +84,7 @@ public class SQLiteAppender extends SyncLite  {
 
 	@Override
 	protected void setDeviceTypeInOptions(SyncLiteOptions options) throws SQLException {
-		options.SetDeviceType(DeviceType.SQLITE_APPENDER);
+		options.setDeviceType(DeviceType.SQLITE_APPENDER);
 	}
 
 	@Override

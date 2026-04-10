@@ -80,7 +80,7 @@ public final class DBLogger extends SyncLite {
 
 	@Override
 	protected void setDeviceTypeInOptions(SyncLiteOptions options) throws SQLException {
-		options.SetDeviceType(DeviceType.DBLOGGER);
+		options.setDeviceType(DeviceType.DBLOGGER);
 	}
 
 	@Override

@@ -90,7 +90,7 @@ public final class H2Store extends SyncLite {
 
     @Override
     protected void setDeviceTypeInOptions(SyncLiteOptions options) throws SQLException {
-        options.SetDeviceType(DeviceType.H2_STORE);
+        options.setDeviceType(DeviceType.H2_STORE);
     }
 
     @Override

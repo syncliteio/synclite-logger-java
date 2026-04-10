@@ -80,7 +80,7 @@ public final class Streaming extends SyncLite {
 
 	@Override
 	protected void setDeviceTypeInOptions(SyncLiteOptions options) throws SQLException {
-		options.SetDeviceType(DeviceType.STREAMING);
+		options.setDeviceType(DeviceType.STREAMING);
 	}
 
 	@Override

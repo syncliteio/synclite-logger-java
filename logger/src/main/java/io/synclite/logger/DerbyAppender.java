@@ -94,7 +94,7 @@ public final class DerbyAppender extends SyncLite {
 
 	@Override
 	protected void setDeviceTypeInOptions(SyncLiteOptions options) throws SQLException {
-		options.SetDeviceType(DeviceType.DERBY_APPENDER);
+		options.setDeviceType(DeviceType.DERBY_APPENDER);
 	}
 
 	@Override
