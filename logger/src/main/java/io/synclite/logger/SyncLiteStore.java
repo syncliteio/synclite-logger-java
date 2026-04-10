@@ -17,18 +17,10 @@
 package io.synclite.logger;
 
 import java.nio.file.Path;
-import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
-import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
-import java.sql.Statement;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -68,23 +60,8 @@ import java.util.Set;
  */
 public class SyncLiteStore implements AutoCloseable {
 
-    private final Connection conn;
-    // Trusted handle — same object as conn, cast once to access the package-private API.
-    private final SyncLiteStoreConnection storeConn;
-    // Ordered column names per table (lower-cased). LinkedHashSet preserves insertion
-    // order so generated INSERT SQL column order is stable.
-    private final Map<String, LinkedHashSet<String>> tableColumns = new HashMap<>();
-    // PreparedStatement cache.
-    // Key for INSERT : table name (lower-cased)
-    // Key for UPDATE : "table|U|setCol1,setCol2|whereCol1,whereCol2"
-    // Key for DELETE : "table|D|whereCol1,whereCol2"
-    // Key for SELECT : "table|S|whereCol1,whereCol2"
-    private final Map<String, PreparedStatement> stmtCache = new HashMap<>();
-    // table name (lower) → set of cache keys for that table, used for bulk invalidation.
-    private final Map<String, Set<String>> tableToKeys = new HashMap<>();
-    // SQL type used when a new String-valued column is auto-added via ALTER TABLE.
-    // Each backend configures this to the most appropriate unbounded text type.
-    private final String stringType;
+    // All shared write mechanics (connection, caches, insert, batch, txn) live here.
+    private final SyncLiteTableWriter writer;
 
     /**
      * Package-private: callers obtain instances via {@code <BackendStore>.open()}.
@@ -103,10 +80,12 @@ public class SyncLiteStore implements AutoCloseable {
      *                   inspect the value.
      */
     SyncLiteStore(Path dbPath, String urlPrefix, String stringType) throws SQLException {
-        this.conn = DriverManager.getConnection(urlPrefix + dbPath.toAbsolutePath().toString());
-        this.storeConn = (SyncLiteStoreConnection) this.conn;
-        this.conn.setAutoCommit(true);
-        this.stringType = stringType;
+        this(dbPath, urlPrefix, stringType, false);
+    }
+
+    /** Package-private: used by {@link SQLiteStore#openUnlogged} and other backends. */
+    SyncLiteStore(Path dbPath, String urlPrefix, String stringType, boolean allUnlogged) throws SQLException {
+        this.writer = new SyncLiteTableWriter(dbPath, urlPrefix, stringType, allUnlogged);
     }
 
     /**
@@ -116,7 +95,7 @@ public class SyncLiteStore implements AutoCloseable {
      * {@code "LONGVARCHAR"} for HyperSQL).
      */
     public synchronized String getDefaultStringType() {
-        return stringType;
+        return writer.getDefaultStringType();
     }
 
     // -------------------------------------------------------------------------
@@ -131,28 +110,7 @@ public class SyncLiteStore implements AutoCloseable {
      *                   Use a {@link LinkedHashMap} to guarantee column order.
      */
     public synchronized void createTable(String table, Map<String, String> columnDefs) throws SQLException {
-        if (columnDefs == null || columnDefs.isEmpty()) {
-            throw new SQLException("columnDefs must contain at least one column");
-        }
-        StringBuilder sb = new StringBuilder("CREATE TABLE ");
-        sb.append(table).append(" (");
-        int i = 0;
-        for (Map.Entry<String, String> e : columnDefs.entrySet()) {
-            if (i++ > 0) sb.append(", ");
-            sb.append(e.getKey()).append(" ").append(e.getValue());
-        }
-        sb.append(")");
-        try (Statement stmt = conn.createStatement()) {
-            stmt.execute(sb.toString());
-        } catch (SQLException ex) {
-            // Not all databases support IF NOT EXISTS; silently ignore "already exists" errors.
-            String msg = ex.getMessage() == null ? "" : ex.getMessage().toLowerCase();
-            String state = ex.getSQLState() == null ? "" : ex.getSQLState();
-            if (!state.startsWith("X0Y32") && !msg.contains("already exists") && !msg.contains("already defined")) {
-                throw ex;
-            }
-        }
-        invalidateTable(table);
+        writer.createTable(table, columnDefs);
     }
 
     /**
@@ -161,21 +119,11 @@ public class SyncLiteStore implements AutoCloseable {
      * @param table table name
      */
     public synchronized void dropTable(String table) throws SQLException {
-        try (Statement stmt = conn.createStatement()) {
-            stmt.execute("DROP TABLE " + table);
-        } catch (SQLException ex) {
-            // Not all databases support IF EXISTS; silently ignore "table not found" errors.
-            String msg = ex.getMessage() == null ? "" : ex.getMessage().toLowerCase();
-            String state = ex.getSQLState() == null ? "" : ex.getSQLState();
-            if (!state.startsWith("42Y55") && !msg.contains("does not exist") && !msg.contains("not found") && !msg.contains("unknown table")) {
-                throw ex;
-            }
-        }
-        invalidateTable(table);
+        writer.dropTable(table);
     }
 
     // -------------------------------------------------------------------------
-    // DML
+    // DML — insert
     // -------------------------------------------------------------------------
 
     /**
@@ -186,30 +134,7 @@ public class SyncLiteStore implements AutoCloseable {
      *              guarantee a predictable column order in the generated SQL.
      */
     public synchronized void insert(String table, Map<String, Object> row) throws SQLException {
-        if (row == null || row.isEmpty()) {
-            throw new SQLException("row must contain at least one column");
-        }
-        boolean prevAutoCommit = conn.getAutoCommit();
-        if (prevAutoCommit) conn.setAutoCommit(false);
-        try {
-            ensureColumns(table, row);
-            Map<String, Object> norm = normalizeKeys(row);
-            PreparedStatement pstmt = getInsertStatement(table);
-            int pos = 1;
-            for (String col : tableColumns.get(table.toLowerCase())) {
-                pstmt.setObject(pos++, norm.get(col));
-            }
-            pstmt.executeUpdate();
-            if (prevAutoCommit) conn.commit();
-        } catch (SQLException e) {
-            if (prevAutoCommit) {
-                try { conn.rollback(); } catch (SQLException ignored) {}
-                invalidateTable(table);
-            }
-            throw e;
-        } finally {
-            if (prevAutoCommit) conn.setAutoCommit(true);
-        }
+        writer.insert(table, row); // routing to unlogged is handled inside writer.insert()
     }
 
     /**
@@ -222,39 +147,12 @@ public class SyncLiteStore implements AutoCloseable {
      * @param rows  list of rows; each row is a column name → value map
      */
     public synchronized void insertBatch(String table, List<Map<String, Object>> rows) throws SQLException {
-        if (rows == null || rows.isEmpty()) return;
-        LinkedHashMap<String, Object> representative = new LinkedHashMap<>();
-        for (Map<String, Object> row : rows) {
-            for (Map.Entry<String, Object> e : row.entrySet()) {
-                representative.putIfAbsent(e.getKey(), e.getValue());
-            }
-        }
-        boolean prevAutoCommit = conn.getAutoCommit();
-        if (prevAutoCommit) conn.setAutoCommit(false);
-        try {
-            ensureColumns(table, representative);
-            PreparedStatement pstmt = getInsertStatement(table);
-            LinkedHashSet<String> orderedCols = tableColumns.get(table.toLowerCase());
-            for (Map<String, Object> row : rows) {
-                Map<String, Object> norm = normalizeKeys(row);
-                int pos = 1;
-                for (String col : orderedCols) {
-                    pstmt.setObject(pos++, norm.get(col));
-                }
-                pstmt.addBatch();
-            }
-            pstmt.executeBatch();
-            if (prevAutoCommit) conn.commit();
-        } catch (SQLException e) {
-            if (prevAutoCommit) {
-                try { conn.rollback(); } catch (SQLException ignored) {}
-                invalidateTable(table);
-            }
-            throw e;
-        } finally {
-            if (prevAutoCommit) conn.setAutoCommit(true);
-        }
+        writer.insertBatch(table, rows); // routing to unlogged is handled inside writer.insertBatch()
     }
+
+    // -------------------------------------------------------------------------
+    // DML — update
+    // -------------------------------------------------------------------------
 
     /**
      * Updates rows in the table matching the {@code where} conditions.
@@ -265,29 +163,30 @@ public class SyncLiteStore implements AutoCloseable {
      *              Pass {@code null} or an empty map to update all rows.
      */
     public synchronized void update(String table, Map<String, Object> set, Map<String, Object> where) throws SQLException {
+        if (writer.isUnloggedFor(table)) { updateUnlogged(table, set, where); return; }
         if (set == null || set.isEmpty()) {
             throw new SQLException("set must contain at least one column");
         }
-        boolean prevAutoCommit = conn.getAutoCommit();
-        if (prevAutoCommit) conn.setAutoCommit(false);
+        boolean prevAutoCommit = writer.conn.getAutoCommit();
+        if (prevAutoCommit) writer.conn.setAutoCommit(false);
         try {
-            ensureColumns(table, set);
+            writer.ensureColumns(table, set);
             String cacheKey = updateKey(table, set.keySet(), where == null ? null : where.keySet());
-            PreparedStatement pstmt = getOrBuildStatement(cacheKey,
+            PreparedStatement pstmt = writer.getOrBuildStatement(cacheKey,
                     () -> buildUpdateSql(table, set.keySet(), where == null ? null : where.keySet()), table);
             int pos = 1;
             for (Object val : set.values()) pstmt.setObject(pos++, val);
             if (where != null) for (Object val : where.values()) pstmt.setObject(pos++, val);
             pstmt.executeUpdate();
-            if (prevAutoCommit) conn.commit();
+            if (prevAutoCommit) writer.conn.commit();
         } catch (SQLException e) {
             if (prevAutoCommit) {
-                try { conn.rollback(); } catch (SQLException ignored) {}
-                invalidateTable(table);
+                try { writer.conn.rollback(); } catch (SQLException ignored) {}
+                writer.invalidateTable(table);
             }
             throw e;
         } finally {
-            if (prevAutoCommit) conn.setAutoCommit(true);
+            if (prevAutoCommit) writer.conn.setAutoCommit(true);
         }
     }
 
@@ -304,14 +203,15 @@ public class SyncLiteStore implements AutoCloseable {
     public synchronized void updateBatch(String table, List<Map<String, Object>> setList,
             List<Map<String, Object>> whereList) throws SQLException {
         if (setList == null || setList.isEmpty()) return;
+        if (writer.isUnloggedFor(table)) { updateBatchUnlogged(table, setList, whereList); return; }
         Map<String, Object> firstSet = setList.get(0);
         Map<String, Object> firstWhere = (whereList != null && !whereList.isEmpty()) ? whereList.get(0) : null;
-        boolean prevAutoCommit = conn.getAutoCommit();
-        if (prevAutoCommit) conn.setAutoCommit(false);
+        boolean prevAutoCommit = writer.conn.getAutoCommit();
+        if (prevAutoCommit) writer.conn.setAutoCommit(false);
         try {
-            ensureColumns(table, firstSet);
+            writer.ensureColumns(table, firstSet);
             String cacheKey = updateKey(table, firstSet.keySet(), firstWhere == null ? null : firstWhere.keySet());
-            PreparedStatement pstmt = getOrBuildStatement(cacheKey,
+            PreparedStatement pstmt = writer.getOrBuildStatement(cacheKey,
                     () -> buildUpdateSql(table, firstSet.keySet(), firstWhere == null ? null : firstWhere.keySet()), table);
             for (int idx = 0; idx < setList.size(); idx++) {
                 Map<String, Object> setRow = setList.get(idx);
@@ -322,17 +222,21 @@ public class SyncLiteStore implements AutoCloseable {
                 pstmt.addBatch();
             }
             pstmt.executeBatch();
-            if (prevAutoCommit) conn.commit();
+            if (prevAutoCommit) writer.conn.commit();
         } catch (SQLException e) {
             if (prevAutoCommit) {
-                try { conn.rollback(); } catch (SQLException ignored) {}
-                invalidateTable(table);
+                try { writer.conn.rollback(); } catch (SQLException ignored) {}
+                writer.invalidateTable(table);
             }
             throw e;
         } finally {
-            if (prevAutoCommit) conn.setAutoCommit(true);
+            if (prevAutoCommit) writer.conn.setAutoCommit(true);
         }
     }
+
+    // -------------------------------------------------------------------------
+    // DML — delete
+    // -------------------------------------------------------------------------
 
     /**
      * Deletes rows from the table matching the {@code where} conditions.
@@ -342,8 +246,9 @@ public class SyncLiteStore implements AutoCloseable {
      *              Pass {@code null} or an empty map to delete all rows.
      */
     public synchronized void delete(String table, Map<String, Object> where) throws SQLException {
+        if (writer.isUnloggedFor(table)) { deleteUnlogged(table, where); return; }
         String cacheKey = deleteKey(table, where == null ? null : where.keySet());
-        PreparedStatement pstmt = getOrBuildStatement(cacheKey,
+        PreparedStatement pstmt = writer.getOrBuildStatement(cacheKey,
                 () -> buildDeleteSql(table, where == null ? null : where.keySet()), table);
         if (where != null) {
             int pos = 1;
@@ -361,16 +266,14 @@ public class SyncLiteStore implements AutoCloseable {
      * @param whereList list of WHERE column → value maps; pass {@code null} or empty to delete all rows
      */
     public synchronized void deleteBatch(String table, List<Map<String, Object>> whereList) throws SQLException {
-        if (whereList == null || whereList.isEmpty()) {
-            delete(table, null);
-            return;
-        }
+        if (whereList == null || whereList.isEmpty()) { delete(table, null); return; }
+        if (writer.isUnloggedFor(table)) { deleteBatchUnlogged(table, whereList); return; }
         Map<String, Object> firstWhere = whereList.get(0);
         String cacheKey = deleteKey(table, firstWhere.isEmpty() ? null : firstWhere.keySet());
-        PreparedStatement pstmt = getOrBuildStatement(cacheKey,
+        PreparedStatement pstmt = writer.getOrBuildStatement(cacheKey,
                 () -> buildDeleteSql(table, firstWhere.isEmpty() ? null : firstWhere.keySet()), table);
-        boolean prevAutoCommit = conn.getAutoCommit();
-        if (prevAutoCommit) conn.setAutoCommit(false);
+        boolean prevAutoCommit = writer.conn.getAutoCommit();
+        if (prevAutoCommit) writer.conn.setAutoCommit(false);
         try {
             for (Map<String, Object> whereRow : whereList) {
                 int pos = 1;
@@ -378,14 +281,14 @@ public class SyncLiteStore implements AutoCloseable {
                 pstmt.addBatch();
             }
             pstmt.executeBatch();
-            if (prevAutoCommit) conn.commit();
+            if (prevAutoCommit) writer.conn.commit();
         } catch (SQLException e) {
             if (prevAutoCommit) {
-                try { conn.rollback(); } catch (SQLException ignored) {}
+                try { writer.conn.rollback(); } catch (SQLException ignored) {}
             }
             throw e;
         } finally {
-            if (prevAutoCommit) conn.setAutoCommit(true);
+            if (prevAutoCommit) writer.conn.setAutoCommit(true);
         }
     }
 
@@ -413,14 +316,153 @@ public class SyncLiteStore implements AutoCloseable {
      */
     public synchronized List<Map<String, Object>> select(String table, Map<String, Object> where) throws SQLException {
         String cacheKey = selectKey(table, where == null ? null : where.keySet());
-        PreparedStatement pstmt = getOrBuildStatement(cacheKey,
+        PreparedStatement pstmt = writer.getOrBuildStatement(cacheKey,
                 () -> buildSelectSql(table, where == null ? null : where.keySet()), table);
         if (where != null && !where.isEmpty()) {
             int pos = 1;
             for (Object val : where.values()) pstmt.setObject(pos++, val);
         }
         try (ResultSet rs = pstmt.executeQuery()) {
-            return toList(rs);
+            return writer.toList(rs);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Unlogged DML — write to device DB without CDC log entries
+    // -------------------------------------------------------------------------
+
+    /**
+     * Disables or re-enables CDC logging for {@code table} on this instance.
+     *
+     * <p>When logging is disabled ({@code logged = false}), any subsequent
+     * {@link #insert}, {@link #insertBatch}, {@link #update}, {@link #updateBatch},
+     * {@link #delete}, and {@link #deleteBatch} calls targeting that table will
+     * write data to the device DB but will <em>not</em> generate commandlog entries.
+     * Downstream SyncLite consumers therefore do not see those writes.
+     *
+     * @param table  table name
+     * @param logged {@code false} to suppress CDC logging; {@code true} (default) to restore it
+     */
+    public synchronized void setTableLogging(String table, boolean logged) {
+        writer.setTableLogging(table, logged);
+    }
+
+    /** Inserts a row without generating a CDC log entry. */
+    public synchronized void insertUnlogged(String table, Map<String, Object> row) throws SQLException {
+        writer.insertUnlogged(table, row);
+    }
+
+    /** Inserts multiple rows without generating CDC log entries. */
+    public synchronized void insertBatchUnlogged(String table, List<Map<String, Object>> rows) throws SQLException {
+        writer.insertBatchUnlogged(table, rows);
+    }
+
+    /** Updates rows without generating a CDC log entry. */
+    public synchronized void updateUnlogged(String table, Map<String, Object> set, Map<String, Object> where)
+            throws SQLException {
+        if (set == null || set.isEmpty()) throw new SQLException("set must contain at least one column");
+        boolean prevAutoCommit = writer.conn.getAutoCommit();
+        if (prevAutoCommit) writer.conn.setAutoCommit(false);
+        try {
+            writer.ensureColumns(table, set);
+            String cacheKey = updateKey(table, set.keySet(), where == null ? null : where.keySet());
+            PreparedStatement pstmt = writer.getUnloggedOrBuildStatement(cacheKey,
+                    () -> buildUpdateSql(table, set.keySet(), where == null ? null : where.keySet()), table);
+            int pos = 1;
+            for (Object val : set.values()) pstmt.setObject(pos++, val);
+            if (where != null) for (Object val : where.values()) pstmt.setObject(pos++, val);
+            pstmt.executeUpdate();
+            if (prevAutoCommit) writer.nativeCommit();
+        } catch (SQLException e) {
+            if (prevAutoCommit) {
+                try { writer.conn.rollback(); } catch (SQLException ignored) {}
+                writer.invalidateTable(table);
+            }
+            throw e;
+        } finally {
+            if (prevAutoCommit) writer.conn.setAutoCommit(true);
+        }
+    }
+
+    /** Updates multiple rows without generating CDC log entries. */
+    public synchronized void updateBatchUnlogged(String table, List<Map<String, Object>> setList,
+            List<Map<String, Object>> whereList) throws SQLException {
+        if (setList == null || setList.isEmpty()) return;
+        Map<String, Object> firstSet   = setList.get(0);
+        Map<String, Object> firstWhere = (whereList != null && !whereList.isEmpty()) ? whereList.get(0) : null;
+        boolean prevAutoCommit = writer.conn.getAutoCommit();
+        if (prevAutoCommit) writer.conn.setAutoCommit(false);
+        try {
+            writer.ensureColumns(table, firstSet);
+            String cacheKey = updateKey(table, firstSet.keySet(), firstWhere == null ? null : firstWhere.keySet());
+            PreparedStatement pstmt = writer.getUnloggedOrBuildStatement(cacheKey,
+                    () -> buildUpdateSql(table, firstSet.keySet(), firstWhere == null ? null : firstWhere.keySet()), table);
+            for (int idx = 0; idx < setList.size(); idx++) {
+                Map<String, Object> setRow   = setList.get(idx);
+                Map<String, Object> whereRow = (whereList != null && idx < whereList.size()) ? whereList.get(idx) : null;
+                int pos = 1;
+                for (Object val : setRow.values()) pstmt.setObject(pos++, val);
+                if (whereRow != null) for (Object val : whereRow.values()) pstmt.setObject(pos++, val);
+                pstmt.addBatch();
+            }
+            pstmt.executeBatch();
+            if (prevAutoCommit) writer.nativeCommit();
+        } catch (SQLException e) {
+            if (prevAutoCommit) {
+                try { writer.conn.rollback(); } catch (SQLException ignored) {}
+                writer.invalidateTable(table);
+            }
+            throw e;
+        } finally {
+            if (prevAutoCommit) writer.conn.setAutoCommit(true);
+        }
+    }
+
+    /** Deletes rows without generating a CDC log entry. */
+    public synchronized void deleteUnlogged(String table, Map<String, Object> where) throws SQLException {
+        String cacheKey = deleteKey(table, where == null ? null : where.keySet());
+        PreparedStatement pstmt = writer.getUnloggedOrBuildStatement(cacheKey,
+                () -> buildDeleteSql(table, where == null ? null : where.keySet()), table);
+        boolean prevAutoCommit = writer.conn.getAutoCommit();
+        if (prevAutoCommit) writer.conn.setAutoCommit(false);
+        try {
+            if (where != null) {
+                int pos = 1;
+                for (Object val : where.values()) pstmt.setObject(pos++, val);
+            }
+            pstmt.executeUpdate();
+            if (prevAutoCommit) writer.nativeCommit();
+        } catch (SQLException e) {
+            if (prevAutoCommit) try { writer.conn.rollback(); } catch (SQLException ignored) {}
+            throw e;
+        } finally {
+            if (prevAutoCommit) writer.conn.setAutoCommit(true);
+        }
+    }
+
+    /** Deletes multiple rows without generating CDC log entries. */
+    public synchronized void deleteBatchUnlogged(String table, List<Map<String, Object>> whereList)
+            throws SQLException {
+        if (whereList == null || whereList.isEmpty()) { deleteUnlogged(table, null); return; }
+        Map<String, Object> firstWhere = whereList.get(0);
+        String cacheKey = deleteKey(table, firstWhere.isEmpty() ? null : firstWhere.keySet());
+        PreparedStatement pstmt = writer.getUnloggedOrBuildStatement(cacheKey,
+                () -> buildDeleteSql(table, firstWhere.isEmpty() ? null : firstWhere.keySet()), table);
+        boolean prevAutoCommit = writer.conn.getAutoCommit();
+        if (prevAutoCommit) writer.conn.setAutoCommit(false);
+        try {
+            for (Map<String, Object> whereRow : whereList) {
+                int pos = 1;
+                for (Object val : whereRow.values()) pstmt.setObject(pos++, val);
+                pstmt.addBatch();
+            }
+            pstmt.executeBatch();
+            if (prevAutoCommit) writer.nativeCommit();
+        } catch (SQLException e) {
+            if (prevAutoCommit) try { writer.conn.rollback(); } catch (SQLException ignored) {}
+            throw e;
+        } finally {
+            if (prevAutoCommit) writer.conn.setAutoCommit(true);
         }
     }
 
@@ -436,12 +478,12 @@ public class SyncLiteStore implements AutoCloseable {
      * create one {@code SyncLiteStore} per thread instead.
      */
     public synchronized void setAutoCommit(boolean autoCommit) throws SQLException {
-        conn.setAutoCommit(autoCommit);
+        writer.setAutoCommit(autoCommit);
     }
 
     /** Commits the current transaction. No-op when auto-commit is {@code true}. */
     public synchronized void commit() throws SQLException {
-        conn.commit();
+        writer.commit();
     }
 
     /**
@@ -450,8 +492,7 @@ public class SyncLiteStore implements AutoCloseable {
      * No-op when auto-commit is {@code true}.
      */
     public synchronized void rollback() throws SQLException {
-        conn.rollback();
-        clearAllCaches();
+        writer.rollback();
     }
 
     // -------------------------------------------------------------------------
@@ -464,68 +505,12 @@ public class SyncLiteStore implements AutoCloseable {
      */
     @Override
     public synchronized void close() throws SQLException {
-        if (!conn.isClosed()) {
-            if (!conn.getAutoCommit()) conn.commit();
-            for (PreparedStatement ps : stmtCache.values()) {
-                try { ps.close(); } catch (SQLException ignored) {}
-            }
-            stmtCache.clear();
-            tableToKeys.clear();
-            conn.close();
-        }
+        writer.close();
     }
 
     // -------------------------------------------------------------------------
-    // Internal helpers
+    // Internal SQL builders (store-only: update / delete / select)
     // -------------------------------------------------------------------------
-
-    private void clearAllCaches() {
-        for (PreparedStatement ps : stmtCache.values()) {
-            try { ps.close(); } catch (SQLException ignored) {}
-        }
-        stmtCache.clear();
-        tableColumns.clear();
-        tableToKeys.clear();
-    }
-
-    /** Functional interface for SQL builders — allows lambda references in getOrBuildStatement. */
-    @FunctionalInterface
-    private interface SqlBuilder {
-        String build() throws SQLException;
-    }
-
-    /** Gets or builds a cached PreparedStatement using the given SQL builder. */
-    private PreparedStatement getOrBuildStatement(String cacheKey, SqlBuilder sqlBuilder, String table)
-            throws SQLException {
-        PreparedStatement pstmt = stmtCache.get(cacheKey);
-        if (pstmt == null || pstmt.isClosed()) {
-            pstmt = storeConn.prepareTrustedStatement(sqlBuilder.build());
-            stmtCache.put(cacheKey, pstmt);
-            tableToKeys.computeIfAbsent(table.toLowerCase(), k -> new HashSet<>()).add(cacheKey);
-        }
-        return pstmt;
-    }
-
-    private PreparedStatement getInsertStatement(String table) throws SQLException {
-        String key = table.toLowerCase();
-        PreparedStatement pstmt = stmtCache.get(key);
-        if (pstmt == null || pstmt.isClosed()) {
-            LinkedHashSet<String> cols = tableColumns.get(key);
-            StringBuilder colSb = new StringBuilder();
-            StringBuilder phSb = new StringBuilder();
-            int i = 0;
-            for (String col : cols) {
-                if (i++ > 0) { colSb.append(", "); phSb.append(", "); }
-                colSb.append(col);
-                phSb.append("?");
-            }
-            pstmt = storeConn.prepareTrustedStatement(
-                    "INSERT INTO " + table + " (" + colSb + ") VALUES (" + phSb + ")");
-            stmtCache.put(key, pstmt);
-            tableToKeys.computeIfAbsent(key, k -> new HashSet<>()).add(key);
-        }
-        return pstmt;
-    }
 
     private String updateKey(String table, Set<String> setKeys, Set<String> whereKeys) {
         return table.toLowerCase() + "|U|" + String.join(",", setKeys)
@@ -582,87 +567,5 @@ public class SyncLiteStore implements AutoCloseable {
             }
         }
         return sb.toString();
-    }
-
-    private void invalidateTable(String table) {
-        String key = table.toLowerCase();
-        tableColumns.remove(key);
-        Set<String> keys = tableToKeys.remove(key);
-        if (keys != null) {
-            for (String k : keys) {
-                PreparedStatement ps = stmtCache.remove(k);
-                if (ps != null) { try { ps.close(); } catch (SQLException ignored) {} }
-            }
-        }
-    }
-
-    private Map<String, Object> normalizeKeys(Map<String, Object> row) {
-        Map<String, Object> norm = new HashMap<>(row.size());
-        for (Map.Entry<String, Object> e : row.entrySet()) {
-            norm.put(e.getKey().toLowerCase(), e.getValue());
-        }
-        return norm;
-    }
-
-    private void loadColumns(String table) throws SQLException {
-        LinkedHashSet<String> cols = new LinkedHashSet<>();
-        try (PreparedStatement ps = conn.prepareStatement("SELECT * FROM " + table + " WHERE 1=0");
-             ResultSet rs = ps.executeQuery()) {
-            ResultSetMetaData meta = rs.getMetaData();
-            for (int i = 1; i <= meta.getColumnCount(); i++) {
-                cols.add(meta.getColumnLabel(i).toLowerCase());
-            }
-        }
-        tableColumns.put(table.toLowerCase(), cols);
-    }
-
-    private String inferSqlType(Object value) {
-        if (value instanceof Long || value instanceof Integer ||
-                value instanceof Short || value instanceof Byte ||
-                value instanceof Boolean) return "INTEGER";
-        if (value instanceof Double || value instanceof Float) return "REAL";
-        if (value instanceof byte[]) return "BLOB";
-        return stringType;
-    }
-
-    private void ensureColumns(String table, Map<String, Object> colsWithValues) throws SQLException {
-        String key = table.toLowerCase();
-        if (!tableColumns.containsKey(key)) loadColumns(table);
-        LinkedHashSet<String> known = tableColumns.get(key);
-        boolean columnAdded = false;
-        for (Map.Entry<String, Object> e : colsWithValues.entrySet()) {
-            String col = e.getKey().toLowerCase();
-            if (!known.contains(col)) {
-                try (Statement stmt = conn.createStatement()) {
-                    stmt.execute("ALTER TABLE " + table + " ADD COLUMN " + col + " " + inferSqlType(e.getValue()));
-                }
-                known.add(col);
-                columnAdded = true;
-            }
-        }
-        if (columnAdded) {
-            // Schema changed: evict stale prepared statements for this table.
-            Set<String> keys = tableToKeys.remove(key);
-            if (keys != null) {
-                for (String k : keys) {
-                    PreparedStatement ps = stmtCache.remove(k);
-                    if (ps != null) { try { ps.close(); } catch (SQLException ignored) {} }
-                }
-            }
-        }
-    }
-
-    private List<Map<String, Object>> toList(ResultSet rs) throws SQLException {
-        ResultSetMetaData meta = rs.getMetaData();
-        int colCount = meta.getColumnCount();
-        List<Map<String, Object>> rows = new ArrayList<>();
-        while (rs.next()) {
-            Map<String, Object> row = new LinkedHashMap<>();
-            for (int i = 1; i <= colCount; i++) {
-                row.put(meta.getColumnLabel(i).toLowerCase(), rs.getObject(i));
-            }
-            rows.add(row);
-        }
-        return rows;
     }
 }
