@@ -20,7 +20,6 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -43,17 +42,20 @@ class SQLiteTransactionalTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        // Create directories in user home following SyncLite pattern
-        Path userHome = Path.of(System.getProperty("user.home"));
-        Path syncLiteHome = userHome.resolve("synclite");
-        Path testHome = syncLiteHome.resolve("test").resolve("SQLiteTransactionalTest");
-        testDbPath = testHome.resolve("db").resolve("test-sqlite.db");
+        Path testHome = Path.of(System.getProperty("user.home")).resolve("synclite").resolve("test");
+        testDbPath = testHome.resolve("db").resolve("SQLiteTransactionalTest").resolve("test-sqlite.db");
         testStageDir = testHome.resolve("stageDir");
-        testConfigPath = testHome.resolve("synclite_logger.conf");
+        testConfigPath = testDbPath.getParent().resolve("synclite_logger.conf");
 
         // Clean up previous test state before each run
-        if (Files.exists(testHome)) {
-            deleteRecursively(testHome);
+        if (Files.exists(testDbPath.getParent())) {
+            deleteRecursively(testDbPath.getParent());
+        }
+        if (Files.exists(testStageDir)) {
+            try (var stageDirs = Files.list(testStageDir)) {
+                stageDirs.filter(p -> p.getFileName().toString().startsWith("synclite-sqlitetransactional-"))
+                         .forEach(p -> { try { deleteRecursively(p); } catch (java.io.IOException ignored) {} });
+            }
         }
 
         Files.createDirectories(testDbPath.getParent());
@@ -105,17 +107,19 @@ class SQLiteTransactionalTest {
         try (Connection conn = DriverManager.getConnection(url)) {
             // Create table
             try (Statement stmt = conn.createStatement()) {
-                stmt.execute("CREATE TABLE test_table (id INTEGER PRIMARY KEY, name TEXT, value INTEGER)");
+                stmt.execute("CREATE TABLE sqlitetransactional_table (id INTEGER PRIMARY KEY, name TEXT, value INTEGER)");
             }
 
             // Insert data
-            try (PreparedStatement pstmt = conn.prepareStatement("INSERT INTO test_table (name, value) VALUES (?, ?)")) {
-                pstmt.setString(1, "test1");
-                pstmt.setInt(2, 100);
+            try (PreparedStatement pstmt = conn.prepareStatement("INSERT INTO sqlitetransactional_table (id, name, value) VALUES (?, ?, ?)")) {
+                pstmt.setInt(1, 1);
+                pstmt.setString(2, "test1");
+                pstmt.setInt(3, 100);
                 pstmt.addBatch();
 
-                pstmt.setString(1, "test2");
-                pstmt.setInt(2, 200);
+                pstmt.setInt(1, 2);
+                pstmt.setString(2, "test2");
+                pstmt.setInt(3, 200);
                 pstmt.addBatch();
 
                 pstmt.executeBatch();
@@ -123,7 +127,7 @@ class SQLiteTransactionalTest {
 
             // Read data back
             try (Statement stmt = conn.createStatement();
-                 ResultSet rs = stmt.executeQuery("SELECT id, name, value FROM test_table ORDER BY id")) {
+                 ResultSet rs = stmt.executeQuery("SELECT id, name, value FROM sqlitetransactional_table ORDER BY id")) {
 
                 assertTrue(rs.next(), "Should have first row");
                 assertEquals(1, rs.getInt("id"));
@@ -140,7 +144,7 @@ class SQLiteTransactionalTest {
 
             // Verify row count
             try (Statement stmt = conn.createStatement();
-                 ResultSet rs = stmt.executeQuery("SELECT COUNT(*) as count FROM test_table")) {
+                 ResultSet rs = stmt.executeQuery("SELECT COUNT(*) as count FROM sqlitetransactional_table")) {
 
                 assertTrue(rs.next(), "Should have count result");
                 assertEquals(2, rs.getInt("count"));
@@ -150,14 +154,14 @@ class SQLiteTransactionalTest {
         // Verify the data is in the database after first transaction
         try (Connection conn = DriverManager.getConnection(url)) {
             try (Statement stmt = conn.createStatement();
-                 ResultSet rs = stmt.executeQuery("SELECT COUNT(*) as count FROM test_table")) {
+                 ResultSet rs = stmt.executeQuery("SELECT COUNT(*) as count FROM sqlitetransactional_table")) {
 
                 assertTrue(rs.next(), "Should have count result");
                 assertEquals(2, rs.getInt("count"), "Two rows should exist after initial insert");
             }
 
             try (Statement stmt = conn.createStatement();
-                 ResultSet rs = stmt.executeQuery("SELECT name, value FROM test_table ORDER BY id")) {
+                 ResultSet rs = stmt.executeQuery("SELECT name, value FROM sqlitetransactional_table ORDER BY id")) {
 
                 assertTrue(rs.next(), "Should have first row");
                 assertEquals("test1", rs.getString("name"));
@@ -187,13 +191,13 @@ class SQLiteTransactionalTest {
         try (Connection conn = DriverManager.getConnection(url)) {
             conn.setAutoCommit(false);
 
-            try (PreparedStatement pstmt = conn.prepareStatement("UPDATE test_table SET value = ? WHERE name = ?")) {
+            try (PreparedStatement pstmt = conn.prepareStatement("UPDATE sqlitetransactional_table SET value = ? WHERE name = ?")) {
                 pstmt.setInt(1, 150);
                 pstmt.setString(2, "test1");
                 assertEquals(1, pstmt.executeUpdate(), "Should update one row");
             }
 
-            try (PreparedStatement pstmt = conn.prepareStatement("DELETE FROM test_table WHERE name = ?")) {
+            try (PreparedStatement pstmt = conn.prepareStatement("DELETE FROM sqlitetransactional_table WHERE name = ?")) {
                 pstmt.setString(1, "test2");
                 assertEquals(1, pstmt.executeUpdate(), "Should delete one row");
             }
@@ -208,13 +212,13 @@ class SQLiteTransactionalTest {
         long commitId;
         try (Connection conn = DriverManager.getConnection(url)) {
             try (Statement stmt = conn.createStatement();
-                 ResultSet rs = stmt.executeQuery("SELECT COUNT(*) as count FROM test_table")) {
+                 ResultSet rs = stmt.executeQuery("SELECT COUNT(*) as count FROM sqlitetransactional_table")) {
                 assertTrue(rs.next(), "Should have count result");
                 assertEquals(1, rs.getInt("count"), "Only one row should remain after update/delete");
             }
 
             try (Statement stmt = conn.createStatement();
-                 ResultSet rs = stmt.executeQuery("SELECT name, value FROM test_table")) {
+                 ResultSet rs = stmt.executeQuery("SELECT name, value FROM sqlitetransactional_table")) {
                 assertTrue(rs.next(), "Should have remaining row");
                 assertEquals("test1", rs.getString("name"));
                 assertEquals(150, rs.getInt("value"));
@@ -238,7 +242,8 @@ class SQLiteTransactionalTest {
             Path latestLogFile = null;
             long latestMtime = -1;
 
-            try (var files = Files.walk(testStageDir)) {
+            Path deviceStageDir = Files.list(testStageDir).filter(p -> p.getFileName().toString().startsWith("synclite-sqlitetransactional-")).findFirst().orElse(testStageDir);
+            try (var files = Files.walk(deviceStageDir)) {
                 for (Path path : files.collect(java.util.stream.Collectors.toList())) {
                     if (!Files.isRegularFile(path)) {
                         continue;

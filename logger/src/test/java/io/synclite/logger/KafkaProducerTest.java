@@ -45,14 +45,18 @@ class KafkaProducerTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        Path userHome = Path.of(System.getProperty("user.home"));
-        Path syncLiteHome = userHome.resolve("synclite");
-        Path testHome = syncLiteHome.resolve("test").resolve("KafkaProducerTest");
-        testDbPath = testHome.resolve("db");
+        Path testHome = Path.of(System.getProperty("user.home")).resolve("synclite").resolve("test");
+        testDbPath = testHome.resolve("db").resolve("KafkaProducerTest");
         testStageDir = testHome.resolve("stageDir");
 
-        if (Files.exists(testHome)) {
-            deleteRecursively(testHome);
+        if (Files.exists(testDbPath)) {
+            deleteRecursively(testDbPath);
+        }
+        if (Files.exists(testStageDir)) {
+            try (var stageDirs = Files.list(testStageDir)) {
+                stageDirs.filter(p -> p.getFileName().toString().startsWith("synclite-default-"))
+                         .forEach(p -> { try { deleteRecursively(p); } catch (java.io.IOException ignored) {} });
+            }
         }
 
         Files.createDirectories(testDbPath);
@@ -162,7 +166,8 @@ class KafkaProducerTest {
         Path latestLogFile = null;
         long latestMtime = -1;
 
-        try (var files = Files.walk(testStageDir)) {
+        Path deviceStageDir = Files.list(testStageDir).filter(p -> p.getFileName().toString().startsWith("synclite-default-")).findFirst().orElse(testStageDir);
+        try (var files = Files.walk(deviceStageDir)) {
             for (Path path : files.collect(Collectors.toList())) {
                 if (!Files.isRegularFile(path)) continue;
                 if (!sqllogPattern.matcher(path.getFileName().toString()).matches()) continue;

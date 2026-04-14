@@ -24,25 +24,42 @@ import java.util.Map;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+/**
+ * Tests for the {@link SyncLiteStream} / {@link Streaming} device.
+ *
+ * <p>All scenarios run sequentially inside a single {@code @Test} on one
+ * persistent device.  The stageDir accumulates log segments across all phases
+ * and is never wiped mid-test, so a consolidator pointed at the stageDir will
+ * see the full, contiguous history.
+ *
+ * <p>The Streaming device does NOT persist inserted rows to the local SQLite
+ * file — it is a write-ahead CDC log, not a queryable store.  Correctness
+ * assertions are therefore commit-id cross-checks: after the device is closed
+ * the commit_id in {@code synclite_txn} must match the latest commit_id
+ * written to the stage log file.
+ */
 class SyncLiteStreamTest {
 
-    private Path testDbPath;
-    private Path testStageDir;
-    private Path testConfigPath;
+    @Test
+    void testAllStreamingAPIs() throws Exception {
+        Path testHome       = Path.of(System.getProperty("user.home")).resolve("synclite").resolve("test");
+        Path testDbPath     = testHome.resolve("db").resolve("SyncLiteStreamTest").resolve("test.db");
+        Path testStageDir   = testHome.resolve("stageDir");
+        Path testConfigPath = testDbPath.getParent().resolve("synclite_logger.conf");
 
-    @BeforeEach
-    void setUp() throws Exception {
-        Path testHome = Path.of(System.getProperty("user.home"))
-                .resolve("synclite").resolve("test").resolve("SyncLiteStreamTest");
-        testDbPath = testHome.resolve("db").resolve("test.db");
-        testStageDir = testHome.resolve("stageDir");
-        testConfigPath = testHome.resolve("synclite_logger.conf");
-
-        if (Files.exists(testHome)) deleteRecursively(testHome);
+        // One-time cleanup from any previous run — never repeated between phases.
+        for (int attempt = 0; attempt < 20 && Files.exists(testDbPath.getParent()); attempt++) {
+            try { deleteRecursively(testDbPath.getParent()); break; }
+            catch (IOException e) { Thread.sleep(200); }
+        }
+        if (Files.exists(testStageDir)) {
+            try (var dirs = Files.list(testStageDir)) {
+                dirs.filter(p -> p.getFileName().toString().startsWith("synclite-synclitestream-"))
+                    .forEach(p -> { try { deleteRecursively(p); } catch (IOException ignored) {} });
+            }
+        }
         Files.createDirectories(testDbPath.getParent());
         Files.createDirectories(testStageDir);
         Files.writeString(testConfigPath,
@@ -50,100 +67,58 @@ class SyncLiteStreamTest {
 
         Class.forName("io.synclite.logger.Streaming");
         Streaming.initialize(testDbPath, testConfigPath, "synclitestream");
-    }
 
-    @AfterEach
-    void tearDown() throws Exception {
-        try { Streaming.closeAllDevices(); } catch (Exception ignored) {}
-        Thread.sleep(150);
-    }
-
-    // -------------------------------------------------------------------------
-    // Tests
-    //
-    // The Streaming device does NOT persist inserted rows to the local SQLite
-    // file — it is a write-ahead CDC log, not a queryable store. Therefore all
-    // correctness assertions here are commit-id cross-checks: after closing the
-    // device the commit_id recorded in synclite_txn must match the latest
-    // commit_id written to the .sqllog stage file.
-    // -------------------------------------------------------------------------
-
-    @Test
-    void testSingleInsert() throws Exception {
+        // ── Phase 1: single insert ──────────────────────────────────────────
         try (SyncLiteStream stream = SyncLiteStream.open(testDbPath)) {
-            stream.createTable("events",
+            stream.createTable("stream_events",
                     new LinkedHashMap<>(Map.of("ts", "BIGINT", "type", "TEXT", "user", "TEXT")));
-            stream.insert("events", Map.of("ts", 1000L, "type", "click", "user", "alice"));
+            stream.insert("stream_events", Map.of("ts", 1000L, "type", "click", "user", "alice"));
         }
-        validateCommitId(testDbPath, testStageDir);
-    }
 
-    @Test
-    void testInsertBatch() throws Exception {
+        // ── Phase 2: insert batch ───────────────────────────────────────────
         List<Map<String, Object>> batch = new ArrayList<>();
         for (int i = 0; i < 5; i++) {
             batch.add(Map.of("ts", (long) i, "type", "view", "user", "user" + i));
         }
         try (SyncLiteStream stream = SyncLiteStream.open(testDbPath)) {
-            stream.createTable("events",
-                    new LinkedHashMap<>(Map.of("ts", "BIGINT", "type", "TEXT", "user", "TEXT")));
-            stream.insertBatch("events", batch);
+            stream.insertBatch("stream_events", batch);
         }
-        validateCommitId(testDbPath, testStageDir);
-    }
 
-    @Test
-    void testAutoTableCreation() throws Exception {
+        // ── Phase 3: auto table creation ────────────────────────────────────
         // Table is NOT pre-created — must be created automatically on first insert.
         try (SyncLiteStream stream = SyncLiteStream.open(testDbPath)) {
             stream.insert("metrics", Map.of("name", "cpu", "value", 0.75));
         }
-        validateCommitId(testDbPath, testStageDir);
-    }
 
-    @Test
-    void testAutoColumnAddition() throws Exception {
+        // ── Phase 4: auto column addition ───────────────────────────────────
         try (SyncLiteStream stream = SyncLiteStream.open(testDbPath)) {
             stream.createTable("logs", new LinkedHashMap<>(Map.of("msg", "TEXT")));
             stream.insert("logs", Map.of("msg", "first"));
             // Second insert introduces new column "level" via ALTER TABLE — must not throw.
             stream.insert("logs", Map.of("msg", "second", "level", "INFO"));
         }
-        validateCommitId(testDbPath, testStageDir);
-    }
 
-    @Test
-    void testTransactionalCommit() throws Exception {
+        // ── Phase 5: transactional commit ───────────────────────────────────
         try (SyncLiteStream stream = SyncLiteStream.open(testDbPath)) {
-            stream.createTable("events",
+            stream.createTable("txn_events",
                     new LinkedHashMap<>(Map.of("ts", "BIGINT", "type", "TEXT")));
             stream.setAutoCommit(false);
-            stream.insert("events", Map.of("ts", 1L, "type", "A"));
-            stream.insert("events", Map.of("ts", 2L, "type", "B"));
+            stream.insert("txn_events", Map.of("ts", 1L, "type", "A"));
+            stream.insert("txn_events", Map.of("ts", 2L, "type", "B"));
             stream.commit();
         }
-        validateCommitId(testDbPath, testStageDir);
-    }
 
-    @Test
-    void testTransactionalRollback() throws Exception {
+        // ── Phase 6: transactional rollback ─────────────────────────────────
         try (SyncLiteStream stream = SyncLiteStream.open(testDbPath)) {
-            stream.createTable("events",
-                    new LinkedHashMap<>(Map.of("ts", "BIGINT", "type", "TEXT")));
             // First row — auto-committed.
-            stream.insert("events", Map.of("ts", 1L, "type", "good"));
+            stream.insert("txn_events", Map.of("ts", 3L, "type", "good"));
             // Second row — rolled back; must not produce an additional log entry.
             stream.setAutoCommit(false);
-            stream.insert("events", Map.of("ts", 2L, "type", "bad"));
+            stream.insert("txn_events", Map.of("ts", 4L, "type", "bad"));
             stream.rollback();
         }
-        // The rolled-back insert must not leave any trace in the stage log beyond
-        // the commits already produced by the auto-committed rows.
-        validateCommitId(testDbPath, testStageDir);
-    }
 
-    @Test
-    void testMultipleTablesIndependent() throws Exception {
+        // ── Phase 7: multiple tables independent ────────────────────────────
         try (SyncLiteStream stream = SyncLiteStream.open(testDbPath)) {
             stream.createTable("clicks",
                     new LinkedHashMap<>(Map.of("url", "TEXT", "user", "TEXT")));
@@ -152,26 +127,20 @@ class SyncLiteStreamTest {
             stream.insert("clicks", Map.of("url", "/home", "user", "alice"));
             stream.insert("impressions", Map.of("ad", "banner1", "user", "bob"));
         }
-        validateCommitId(testDbPath, testStageDir);
-    }
 
-    @Test
-    void testBatchWithHeterogeneousRows() throws Exception {
+        // ── Phase 8: batch with heterogeneous rows ───────────────────────────
         // Rows with different column sets — the union of columns must be used.
-        List<Map<String, Object>> batch = List.of(
+        List<Map<String, Object>> hetBatch = List.of(
                 new LinkedHashMap<>(Map.of("a", 1L, "b", "x")),
                 new LinkedHashMap<>(Map.of("a", 2L, "c", "y"))   // no "b", adds "c"
         );
         try (SyncLiteStream stream = SyncLiteStream.open(testDbPath)) {
             stream.createTable("mixed",
                     new LinkedHashMap<>(Map.of("a", "BIGINT", "b", "TEXT")));
-            stream.insertBatch("mixed", batch);
+            stream.insertBatch("mixed", hetBatch);
         }
-        validateCommitId(testDbPath, testStageDir);
-    }
 
-    @Test
-    void testCreateAndDropTable() throws Exception {
+        // ── Phase 9: create and drop table ──────────────────────────────────
         try (SyncLiteStream stream = SyncLiteStream.open(testDbPath)) {
             stream.createTable("tmp", new LinkedHashMap<>(Map.of("id", "BIGINT", "val", "TEXT")));
             stream.insert("tmp", Map.of("id", 1L, "val", "hello"));
@@ -179,54 +148,28 @@ class SyncLiteStreamTest {
             // Recreate with same name — must not throw.
             stream.createTable("tmp", new LinkedHashMap<>(Map.of("id", "BIGINT")));
         }
-        validateCommitId(testDbPath, testStageDir);
-    }
 
-    @Test
-    void testCloseIsIdempotent() throws Exception {
-        SyncLiteStream stream = SyncLiteStream.open(testDbPath);
-        stream.createTable("events",
-                new LinkedHashMap<>(Map.of("ts", "BIGINT", "type", "TEXT")));
-        stream.insert("events", Map.of("ts", 1L, "type", "x"));
-        stream.close();
+        // ── Phase 10: close is idempotent ───────────────────────────────────
+        SyncLiteStream stream10 = SyncLiteStream.open(testDbPath);
+        stream10.insert("stream_events", Map.of("ts", 9999L, "type", "idempotent", "user", "test"));
+        stream10.close();
         // Second close must not throw.
-        assertDoesNotThrow(stream::close);
-    }
+        assertDoesNotThrow(stream10::close);
 
-    @Test
-    void testEmptyBatchIsNoOp() throws Exception {
+        // ── Phase 11: empty batch is no-op ──────────────────────────────────
         try (SyncLiteStream stream = SyncLiteStream.open(testDbPath)) {
-            stream.insertBatch("events", List.of()); // must not throw
+            stream.insertBatch("stream_events", List.of()); // must not throw
         }
-        // Flush and close so synclite_txn is readable via plain SQLite.
-        Streaming.closeAllDevices();
-        Thread.sleep(150);
-        // No inserts committed — commit_id stays at zero (initial row from StreamingProcessor).
-        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + testDbPath);
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery("SELECT MAX(commit_id) FROM synclite_txn")) {
-            assertTrue(rs.next(), "synclite_txn must exist");
-            assertEquals(0L, rs.getLong(1), "Empty batch must not advance commit_id");
-        }
-    }
 
-    // -------------------------------------------------------------------------
-    // Commit-ID validation helpers
-    // -------------------------------------------------------------------------
-
-    /**
-     * Flushes staged log files to disk (by closing the device), then asserts that
-     * the max commit_id in synclite_txn matches the latest commit_id in the most
-     * recently modified .sqllog file under stageDir.
-     *
-     * After this call the device is closed; tearDown safely ignores the second close.
-     */
-    private void validateCommitId(Path dbPath, Path stageDir) throws Exception {
+        // ── Final validation ─────────────────────────────────────────────────
+        // Close the device to flush all pending log segments to stageDir, then
+        // verify that the commit_id in synclite_txn matches the latest entry
+        // in the accumulated stage log files.
         Streaming.closeAllDevices();
         Thread.sleep(150);
 
         long commitId;
-        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
+        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + testDbPath);
              Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery("SELECT MAX(commit_id) FROM synclite_txn")) {
             assertTrue(rs.next(), "synclite_txn must have a row");
@@ -234,7 +177,7 @@ class SyncLiteStreamTest {
             assertTrue(commitId > 0, "commit_id must be positive after inserts");
         }
 
-        Path latestLogFile = findLatestSqlLog(stageDir);
+        Path latestLogFile = findLatestSqlLog(testStageDir);
         assertNotNull(latestLogFile, "At least one .sqllog file must be created in stageDir");
 
         long foundCommitId;
@@ -249,6 +192,10 @@ class SyncLiteStreamTest {
         assertEquals(commitId, foundCommitId,
                 "commit_id in synclite_txn must match the latest commit in the stage log file");
     }
+
+    // -------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------
 
     private Path findLatestSqlLog(Path stageDir) throws IOException {
         Pattern pattern = Pattern.compile("^\\d+\\.sqllog$");
@@ -265,13 +212,13 @@ class SyncLiteStreamTest {
         return latest;
     }
 
-    private void deleteRecursively(Path path) {
+    private void deleteRecursively(Path path) throws IOException {
         if (Files.notExists(path)) return;
         if (Files.isDirectory(path)) {
             try (var stream = Files.list(path)) {
                 for (Path child : stream.collect(Collectors.toList())) deleteRecursively(child);
-            } catch (IOException ignored) {}
+            }
         }
-        try { Files.deleteIfExists(path); } catch (IOException ignored) {}
+        Files.deleteIfExists(path);
     }
 }

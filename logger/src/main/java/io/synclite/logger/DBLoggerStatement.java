@@ -137,6 +137,9 @@ public class DBLoggerStatement extends JDBC4Statement {
 		String addColumnSql = "ALTER TABLE " + tableName + " ADD COLUMN " + columnName + colDef.toString();
 		boolean result = super.execute(dropColumnSql);
 		result = super.execute(addColumnSql);
+		if (sqlLogger != null) {
+			sqlLogger.evictTableFromCache(tableName);
+		}
 		logOper(sql);
 		processCommit();
 		return result;
@@ -153,6 +156,9 @@ public class DBLoggerStatement extends JDBC4Statement {
 			tokens[0] = "CREATE";
 			String createTableSql = String.join(" ", tokens);
 			result = super.execute(createTableSql);
+			if (sqlLogger != null) {
+				sqlLogger.evictTableFromCache(tokens[2].split("\\(")[0].strip());
+			}
 			logOper(sql);
 			processCommit();
 			return result;
@@ -188,12 +194,17 @@ public class DBLoggerStatement extends JDBC4Statement {
 
 	private final boolean executeDDL(String sql) throws SQLException {
 		boolean result = super.execute(sql);
+		String tableName = SyncLiteUtils.getTableNameFromDDL(sql);
+		if (tableName != null && sqlLogger != null) {
+			sqlLogger.evictTableFromCache(tableName);
+		}
 		logOper(sql);
 		processCommit();
 		return result;
 	}
 
 	private final boolean executeInsert(String sql) throws SQLException {
+		SyncLiteUtils.validateInsertForDBLoggerAndAppender(sql.trim(), getConn(), sqlLogger);
 		logOper(sql);
 		processCommit();
 		return true;

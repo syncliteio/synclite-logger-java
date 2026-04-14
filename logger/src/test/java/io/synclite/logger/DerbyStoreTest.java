@@ -42,15 +42,19 @@ class DerbyStoreTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        Path userHome = Path.of(System.getProperty("user.home"));
-        Path syncLiteHome = userHome.resolve("synclite");
-        Path testHome = syncLiteHome.resolve("test").resolve("DerbyStoreTest");
-        testDbPath = testHome.resolve("db").resolve("test-derby-store.db");
+        Path testHome = Path.of(System.getProperty("user.home")).resolve("synclite").resolve("test");
+        testDbPath = testHome.resolve("db").resolve("DerbyStoreTest").resolve("test-derby-store.db");
         testStageDir = testHome.resolve("stageDir");
-        testConfigPath = testHome.resolve("synclite_logger.conf");
+        testConfigPath = testDbPath.getParent().resolve("synclite_logger.conf");
 
-        if (Files.exists(testHome)) {
-            deleteRecursively(testHome);
+        if (Files.exists(testDbPath.getParent())) {
+            deleteRecursively(testDbPath.getParent());
+        }
+        if (Files.exists(testStageDir)) {
+            try (var stageDirs = Files.list(testStageDir)) {
+                stageDirs.filter(p -> p.getFileName().toString().startsWith("synclite-derbystore-"))
+                         .forEach(p -> { try { deleteRecursively(p); } catch (java.io.IOException ignored) {} });
+            }
         }
 
         Files.createDirectories(testDbPath.getParent());
@@ -96,10 +100,10 @@ class DerbyStoreTest {
         // First transaction: create table and insert data
         try (Connection conn = DriverManager.getConnection(url)) {
             try (Statement stmt = conn.createStatement()) {
-                stmt.execute("CREATE TABLE test_table (id INTEGER PRIMARY KEY, name VARCHAR(255), value INTEGER)");
+                stmt.execute("CREATE TABLE derbystore_table (id INTEGER PRIMARY KEY, name VARCHAR(255), value INTEGER)");
             }
 
-            try (PreparedStatement pstmt = conn.prepareStatement("INSERT INTO test_table (id, name, value) VALUES (?, ?, ?)")) {
+            try (PreparedStatement pstmt = conn.prepareStatement("INSERT INTO derbystore_table (id, name, value) VALUES (?, ?, ?)")) {
                 pstmt.setInt(1, 1);
                 pstmt.setString(2, "test1");
                 pstmt.setInt(3, 100);
@@ -115,13 +119,13 @@ class DerbyStoreTest {
 
             // Validate data is stored locally
             try (Statement stmt = conn.createStatement();
-                 ResultSet rs = stmt.executeQuery("SELECT COUNT(*) as count FROM test_table")) {
+                 ResultSet rs = stmt.executeQuery("SELECT COUNT(*) as count FROM derbystore_table")) {
                 assertTrue(rs.next());
                 assertEquals(2, rs.getInt("count"));
             }
 
             try (Statement stmt = conn.createStatement();
-                 ResultSet rs = stmt.executeQuery("SELECT name, value FROM test_table ORDER BY id")) {
+                 ResultSet rs = stmt.executeQuery("SELECT name, value FROM derbystore_table ORDER BY id")) {
                 assertTrue(rs.next());
                 assertEquals("test1", rs.getString("name"));
                 assertEquals(100, rs.getInt("value"));
@@ -148,20 +152,20 @@ class DerbyStoreTest {
             conn.setAutoCommit(false);
 
             // UPDATE test1's value to 999
-            try (PreparedStatement pstmt = conn.prepareStatement("UPDATE test_table SET value = ? WHERE name = ?")) {
+            try (PreparedStatement pstmt = conn.prepareStatement("UPDATE derbystore_table SET value = ? WHERE name = ?")) {
                 pstmt.setInt(1, 999);
                 pstmt.setString(2, "test1");
                 pstmt.execute();
             }
 
             // DELETE test2
-            try (PreparedStatement pstmt = conn.prepareStatement("DELETE FROM test_table WHERE name = ?")) {
+            try (PreparedStatement pstmt = conn.prepareStatement("DELETE FROM derbystore_table WHERE name = ?")) {
                 pstmt.setString(1, "test2");
                 pstmt.execute();
             }
 
             // Insert additional rows
-            try (PreparedStatement pstmt = conn.prepareStatement("INSERT INTO test_table (id, name, value) VALUES (?, ?, ?)")) {
+            try (PreparedStatement pstmt = conn.prepareStatement("INSERT INTO derbystore_table (id, name, value) VALUES (?, ?, ?)")) {
                 pstmt.setInt(1, 3);
                 pstmt.setString(2, "test3");
                 pstmt.setInt(3, 300);
@@ -179,21 +183,21 @@ class DerbyStoreTest {
 
             // Validate 3 rows remain (test1 updated, test2 deleted, test3 and test4 inserted)
             try (Statement stmt = conn.createStatement();
-                 ResultSet rs = stmt.executeQuery("SELECT COUNT(*) as count FROM test_table")) {
+                 ResultSet rs = stmt.executeQuery("SELECT COUNT(*) as count FROM derbystore_table")) {
                 assertTrue(rs.next());
                 assertEquals(3, rs.getInt("count"), "Three rows should remain after update and delete");
             }
 
             // Validate test1 was updated
             try (Statement stmt = conn.createStatement();
-                 ResultSet rs = stmt.executeQuery("SELECT value FROM test_table WHERE name = 'test1'")) {
+                 ResultSet rs = stmt.executeQuery("SELECT value FROM derbystore_table WHERE name = 'test1'")) {
                 assertTrue(rs.next(), "test1 should still exist");
                 assertEquals(999, rs.getInt("value"), "test1 value should be updated to 999");
             }
 
             // Validate test2 was deleted
             try (Statement stmt = conn.createStatement();
-                 ResultSet rs = stmt.executeQuery("SELECT COUNT(*) as count FROM test_table WHERE name = 'test2'")) {
+                 ResultSet rs = stmt.executeQuery("SELECT COUNT(*) as count FROM derbystore_table WHERE name = 'test2'")) {
                 assertTrue(rs.next());
                 assertEquals(0, rs.getInt("count"), "test2 should be deleted");
             }
@@ -215,7 +219,8 @@ class DerbyStoreTest {
         Path lastLogFile = null;
         long maxSegNum = -1;
 
-        try (var files = Files.walk(testStageDir)) {
+        Path deviceStageDir = Files.list(testStageDir).filter(p -> p.getFileName().toString().startsWith("synclite-derbystore-")).findFirst().orElse(testStageDir);
+        try (var files = Files.walk(deviceStageDir)) {
             for (Path path : files.collect(Collectors.toList())) {
                 if (!Files.isRegularFile(path)) continue;
                 Matcher m = sqllogPattern.matcher(path.getFileName().toString());

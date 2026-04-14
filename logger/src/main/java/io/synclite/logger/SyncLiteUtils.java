@@ -32,6 +32,8 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.sqlite.SQLiteConnection;
+
 import io.synclite.logger.MultiWriterDBProcessor.Column;
 
 public class SyncLiteUtils {
@@ -56,6 +58,9 @@ public class SyncLiteUtils {
 	private static final Pattern DDL_CREATE_TABLE_PATTERN = Pattern.compile("CREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?(?:[\\w.]+\\.)?([\\w]+)", Pattern.CASE_INSENSITIVE);
 	private static final Pattern DDL_DROP_TABLE_PATTERN   = Pattern.compile("DROP\\s+TABLE\\s+(?:IF\\s+EXISTS\\s+)?(?:[\\w.]+\\.)?([\\w]+)", Pattern.CASE_INSENSITIVE);
 	private static final Pattern DDL_ALTER_TABLE_PATTERN  = Pattern.compile("ALTER\\s+TABLE\\s+(?:[\\w.]+\\.)?([\\w]+)", Pattern.CASE_INSENSITIVE);
+
+	// Pattern to extract table name from INSERT INTO [db.]table ...
+	private static final Pattern INSERT_TABLE_NAME_PATTERN = Pattern.compile("INSERT\\s+INTO\\s+(?:\\w+\\.)?([\\w]+)", Pattern.CASE_INSENSITIVE);
 
 	// Patterns for getDDLStatement ALTER sub-clauses — hoisted to avoid recompiling on every call
 	private static final Pattern DDL_ADD_COLUMN_PATTERN    = Pattern.compile("ADD\\s+(?:COLUMN)?", Pattern.CASE_INSENSITIVE);
@@ -476,6 +481,53 @@ public class SyncLiteUtils {
 		// Check if the input string matches the pattern
 		if (!matcher.matches()) {
 			throw new SQLException("Unsupported Syntax for INSERT. Supported Syntaxes are: 1. INSERT INTO <dbName>.<tableName> (col1, col2, ...) VALUES (<literal|?>, ...) 2. INSERT INTO <tableName>(col1, col2, ...) VALUES(<literal|?>, ...) 3. INSERT INTO <tableName> VALUES(<literal|?>, ...). Function calls and subqueries are not permitted in the VALUES list.");
+		}
+
+		// If a column list is present, verify column count matches value count
+		String columnList = matcher.group(2);
+		if (columnList != null) {
+			int colCount = columnList.split(",").length;
+			int valCount = matcher.group(matcher.groupCount()).split(",").length;
+			if (colCount != valCount) {
+				throw new SQLException("INSERT column count (" + colCount + ") does not match value count (" + valCount + "). Each specified column must have a corresponding value.");
+			}
+		}
+	}
+
+	final static void validateInsertForDBLoggerAndAppender(String strippedSql, SQLiteConnection conn, SQLLogger logger) throws SQLException {
+		// Step 1: syntax + column/value consistency (always)
+		validateInsertForDBLoggerAndAppender(strippedSql);
+
+		if (conn == null || logger == null) return;
+
+		// Step 2: extract table name
+		Matcher tableNameMatcher = INSERT_TABLE_NAME_PATTERN.matcher(strippedSql);
+		if (!tableNameMatcher.find()) return;
+		String tableName = tableNameMatcher.group(1);
+
+		// Step 3: lookup (lazily cached) column count for this table
+		int tableColCount;
+		try {
+			tableColCount = logger.getOrLoadTableColumnCount(tableName, conn);
+		} catch (Exception e) {
+			return; // schema not available yet — skip check
+		}
+		if (tableColCount == 0) return; // table not yet known — skip check
+
+		// Step 4: compare counts
+		Matcher insertMatcher = INSERT_DBLOGGER_APPENDER_PATTERN.matcher(strippedSql);
+		if (!insertMatcher.matches()) return;
+		String columnList = insertMatcher.group(2);
+		if (columnList != null) {
+			int colCount = columnList.split(",").length;
+			if (colCount != tableColCount) {
+				throw new SQLException("INSERT column count (" + colCount + ") does not match table '" + tableName + "' column count (" + tableColCount + "). All table columns must be specified.");
+			}
+		} else {
+			int valCount = insertMatcher.group(insertMatcher.groupCount()).split(",").length;
+			if (valCount != tableColCount) {
+				throw new SQLException("INSERT value count (" + valCount + ") does not match table '" + tableName + "' column count (" + tableColCount + "). A value must be supplied for every table column.");
+			}
 		}
 	}
 

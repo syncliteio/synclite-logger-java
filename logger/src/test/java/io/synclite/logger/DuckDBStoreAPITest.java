@@ -25,13 +25,18 @@ class DuckDBStoreAPITest {
 
     @BeforeEach
     void setUp() throws Exception {
-        Path testHome = Path.of(System.getProperty("user.home"))
-                .resolve("synclite").resolve("test").resolve("DuckDBStoreAPITest");
-        testDbPath = testHome.resolve("db").resolve("test.db");
+        Path testHome = Path.of(System.getProperty("user.home")).resolve("synclite").resolve("test");
+        testDbPath = testHome.resolve("db").resolve("DuckDBStoreAPITest").resolve("test.db");
         testStageDir = testHome.resolve("stageDir");
-        testConfigPath = testHome.resolve("synclite_logger.conf");
+        testConfigPath = testDbPath.getParent().resolve("synclite_logger.conf");
 
-        if (Files.exists(testHome)) deleteRecursively(testHome);
+        if (Files.exists(testDbPath.getParent())) deleteRecursively(testDbPath.getParent());
+        if (Files.exists(testStageDir)) {
+            try (var stageDirs = Files.list(testStageDir)) {
+                stageDirs.filter(p -> p.getFileName().toString().startsWith("synclite-duckdbstoreapi-"))
+                         .forEach(p -> { try { deleteRecursively(p); } catch (java.io.IOException ignored) {} });
+            }
+        }
         Files.createDirectories(testDbPath.getParent());
         Files.createDirectories(testStageDir);
         Files.writeString(testConfigPath,
@@ -50,7 +55,7 @@ class DuckDBStoreAPITest {
     @Test
     void testAllAPIs() throws Exception {
         try (SyncLiteStore store = DuckDBStore.open(testDbPath)) {
-            SQLiteStoreAPITest.runAPITest(store);
+            SQLiteStoreAPITest.runAPITest(store, "duckdbstoreapi_players");
         }
     }
 
