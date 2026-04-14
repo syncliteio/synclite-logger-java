@@ -176,6 +176,9 @@ public class SyncLiteStatement extends JDBC4Statement {
 
     protected boolean stmtExecute(String sql, String tableNameInDDL, StringBuilder sqlToLog) throws SQLException {
     	boolean res=superExecute(sql);
+    	if (tableNameInDDL != null && sqlLogger != null) {
+    		sqlLogger.evictTableFromCache(tableNameInDDL);
+    	}
     	sqlToLog.append(sql);
     	return res;
     }

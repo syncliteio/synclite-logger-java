@@ -94,6 +94,7 @@ abstract class SQLLogger extends Thread {
 	protected AtomicBoolean isHealthy = new AtomicBoolean(true);
 	private SyncLiteAppLock appLock = new SyncLiteAppLock();
 	private AtomicLong latestGeneratedCommitId = new AtomicLong(System.currentTimeMillis());
+	protected final ConcurrentHashMap<String, Integer> tableColumnCountCache = new ConcurrentHashMap<>();
 
 	protected SQLLogger(Path dbPath, SyncLiteOptions options, Logger tracer) throws SQLException {
 		this.options = options;
@@ -129,6 +130,29 @@ abstract class SQLLogger extends Thread {
 			return null;
 		}
 		return (SQLLogger) loggers.get(dbPath);
+	}
+
+	final int getOrLoadTableColumnCount(String tableName, org.sqlite.SQLiteConnection conn) throws SQLException {
+		String key = tableName.toUpperCase();
+		Integer cached = tableColumnCountCache.get(key);
+		if (cached != null) {
+			return cached;
+		}
+		int count = 0;
+		try (Statement stmt = conn.createStatement();
+				ResultSet rs = stmt.executeQuery("PRAGMA table_info(" + key + ")")) {
+			while (rs.next()) count++;
+		}
+		if (count > 0) {
+			tableColumnCountCache.put(key, count);
+		}
+		return count;
+	}
+
+	final void evictTableFromCache(String tableName) {
+		if (tableName != null) {
+			tableColumnCountCache.remove(tableName.toUpperCase());
+		}
 	}
 
 	protected abstract LogSegmentPlacer getLogSegmentPlacer();

@@ -42,15 +42,19 @@ class DerbyAppenderTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        Path userHome = Path.of(System.getProperty("user.home"));
-        Path syncLiteHome = userHome.resolve("synclite");
-        Path testHome = syncLiteHome.resolve("test").resolve("DerbyAppenderTest");
-        testDbPath = testHome.resolve("db").resolve("test-derby-appender.db");
+        Path testHome = Path.of(System.getProperty("user.home")).resolve("synclite").resolve("test");
+        testDbPath = testHome.resolve("db").resolve("DerbyAppenderTest").resolve("test-derby-appender.db");
         testStageDir = testHome.resolve("stageDir");
-        testConfigPath = testHome.resolve("synclite_logger.conf");
+        testConfigPath = testDbPath.getParent().resolve("synclite_logger.conf");
 
-        if (Files.exists(testHome)) {
-            deleteRecursively(testHome);
+        if (Files.exists(testDbPath.getParent())) {
+            deleteRecursively(testDbPath.getParent());
+        }
+        if (Files.exists(testStageDir)) {
+            try (var stageDirs = Files.list(testStageDir)) {
+                stageDirs.filter(p -> p.getFileName().toString().startsWith("synclite-derbyappender-"))
+                         .forEach(p -> { try { deleteRecursively(p); } catch (java.io.IOException ignored) {} });
+            }
         }
 
         Files.createDirectories(testDbPath.getParent());
@@ -105,10 +109,10 @@ class DerbyAppenderTest {
         // First transaction: create table and insert data
         try (Connection conn = DriverManager.getConnection(url)) {
             try (Statement stmt = conn.createStatement()) {
-                stmt.execute("CREATE TABLE test_table (id INTEGER PRIMARY KEY, name VARCHAR(255), value INTEGER)");
+                stmt.execute("CREATE TABLE derbyappender_table (id INTEGER PRIMARY KEY, name VARCHAR(255), value INTEGER)");
             }
 
-            try (PreparedStatement pstmt = conn.prepareStatement("INSERT INTO test_table (id, name, value) VALUES (?, ?, ?)")) {
+            try (PreparedStatement pstmt = conn.prepareStatement("INSERT INTO derbyappender_table (id, name, value) VALUES (?, ?, ?)")) {
                 pstmt.setInt(1, 1);
                 pstmt.setString(2, "test1");
                 pstmt.setInt(3, 100);
@@ -124,13 +128,13 @@ class DerbyAppenderTest {
 
             // Validate data is stored locally
             try (Statement stmt = conn.createStatement();
-                 ResultSet rs = stmt.executeQuery("SELECT COUNT(*) as count FROM test_table")) {
+                 ResultSet rs = stmt.executeQuery("SELECT COUNT(*) as count FROM derbyappender_table")) {
                 assertTrue(rs.next());
                 assertEquals(2, rs.getInt("count"));
             }
 
             try (Statement stmt = conn.createStatement();
-                 ResultSet rs = stmt.executeQuery("SELECT name, value FROM test_table ORDER BY id")) {
+                 ResultSet rs = stmt.executeQuery("SELECT name, value FROM derbyappender_table ORDER BY id")) {
                 assertTrue(rs.next());
                 assertEquals("test1", rs.getString("name"));
                 assertEquals(100, rs.getInt("value"));
@@ -164,19 +168,19 @@ class DerbyAppenderTest {
             conn.setAutoCommit(false);
 
             SQLException updateEx = assertThrows(SQLException.class, () -> {
-                conn.prepareStatement("UPDATE test_table SET value = ? WHERE name = ?");
+                conn.prepareStatement("UPDATE derbyappender_table SET value = ? WHERE name = ?");
             }, "Appender device should reject UPDATE");
             assertTrue(updateEx.getMessage().contains("Unsupported SQL"),
                     "Error message should indicate unsupported SQL, got: " + updateEx.getMessage());
 
             SQLException deleteEx = assertThrows(SQLException.class, () -> {
-                conn.prepareStatement("DELETE FROM test_table WHERE name = ?");
+                conn.prepareStatement("DELETE FROM derbyappender_table WHERE name = ?");
             }, "Appender device should reject DELETE");
             assertTrue(deleteEx.getMessage().contains("Unsupported SQL"),
                     "Error message should indicate unsupported SQL, got: " + deleteEx.getMessage());
 
             // Insert additional data after rejections
-            try (PreparedStatement pstmt = conn.prepareStatement("INSERT INTO test_table (id, name, value) VALUES (?, ?, ?)")) {
+            try (PreparedStatement pstmt = conn.prepareStatement("INSERT INTO derbyappender_table (id, name, value) VALUES (?, ?, ?)")) {
                 pstmt.setInt(1, 3);
                 pstmt.setString(2, "test3");
                 pstmt.setInt(3, 300);
@@ -194,7 +198,7 @@ class DerbyAppenderTest {
 
             // Validate all 4 rows are present
             try (Statement stmt = conn.createStatement();
-                 ResultSet rs = stmt.executeQuery("SELECT COUNT(*) as count FROM test_table")) {
+                 ResultSet rs = stmt.executeQuery("SELECT COUNT(*) as count FROM derbyappender_table")) {
                 assertTrue(rs.next());
                 assertEquals(4, rs.getInt("count"), "Four rows should exist after second insert");
             }
@@ -216,7 +220,8 @@ class DerbyAppenderTest {
         Path lastLogFile = null;
         long maxSegNum = -1;
 
-        try (var files = Files.walk(testStageDir)) {
+        Path deviceStageDir = Files.list(testStageDir).filter(p -> p.getFileName().toString().startsWith("synclite-derbyappender-")).findFirst().orElse(testStageDir);
+        try (var files = Files.walk(deviceStageDir)) {
             for (Path path : files.collect(Collectors.toList())) {
                 if (!Files.isRegularFile(path)) continue;
                 Matcher m = sqllogPattern.matcher(path.getFileName().toString());

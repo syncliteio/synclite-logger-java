@@ -259,8 +259,13 @@ class FSArchiver {
 
 	void moveToWriteArchive(Path sourceArtifactPath, String targetArtifactName) throws SQLException {
 		synchronized(this) {
-			Path targetPath = getTargetPathForArtifact(sourceArtifactPath, targetArtifactName);
 			try {
+				createLocalWriteArchiveIfNotExists();
+			} catch (SQLException e) {
+				throw new SQLException("SyncLite FSArchiver failed to create archive directory before move : " + writeArchivePath.toString(), e);
+			}
+			Path targetPath = getTargetPathForArtifact(sourceArtifactPath, targetArtifactName);
+			try {				
 				doMoveToWriteArchive(sourceArtifactPath, targetPath);
 			} catch (SQLException e) {
 				//If the file is already moved to targetPath here then just move on as there is nothing to do.
@@ -275,6 +280,7 @@ class FSArchiver {
 	void copyToWriteArchive(Path sourceArtifactPath, String newArtifactName) throws SQLException {
 		synchronized(this) {
 			try {
+				createLocalWriteArchiveIfNotExists();
 				Path targetPath = getTargetPathForArtifact(sourceArtifactPath, newArtifactName);
 				doCopyToWriteArchive(sourceArtifactPath, targetPath);
 			} catch (SQLException e) {

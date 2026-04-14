@@ -42,15 +42,19 @@ class DerbyTransactionalTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        Path userHome = Path.of(System.getProperty("user.home"));
-        Path syncLiteHome = userHome.resolve("synclite");
-        Path testHome = syncLiteHome.resolve("test").resolve("DerbyTransactionalTest");
-        testDbPath = testHome.resolve("db").resolve("test-derby.db");
+        Path testHome = Path.of(System.getProperty("user.home")).resolve("synclite").resolve("test");
+        testDbPath = testHome.resolve("db").resolve("DerbyTransactionalTest").resolve("test-derby.db");
         testStageDir = testHome.resolve("stageDir");
-        testConfigPath = testHome.resolve("synclite_logger.conf");
+        testConfigPath = testDbPath.getParent().resolve("synclite_logger.conf");
 
-        if (Files.exists(testHome)) {
-            deleteRecursively(testHome);
+        if (Files.exists(testDbPath.getParent())) {
+            deleteRecursively(testDbPath.getParent());
+        }
+        if (Files.exists(testStageDir)) {
+            try (var stageDirs = Files.list(testStageDir)) {
+                stageDirs.filter(p -> p.getFileName().toString().startsWith("synclite-derbytransactional-"))
+                         .forEach(p -> { try { deleteRecursively(p); } catch (java.io.IOException ignored) {} });
+            }
         }
 
         Files.createDirectories(testDbPath.getParent());
@@ -102,10 +106,10 @@ class DerbyTransactionalTest {
 
         try (Connection conn = DriverManager.getConnection(url)) {
             try (Statement stmt = conn.createStatement()) {
-                stmt.execute("CREATE TABLE test_table (id INTEGER PRIMARY KEY, name VARCHAR(255), value INTEGER)");
+                stmt.execute("CREATE TABLE derbytransactional_table (id INTEGER PRIMARY KEY, name VARCHAR(255), value INTEGER)");
             }
 
-            try (PreparedStatement pstmt = conn.prepareStatement("INSERT INTO test_table (id, name, value) VALUES (?, ?, ?)")) {
+            try (PreparedStatement pstmt = conn.prepareStatement("INSERT INTO derbytransactional_table (id, name, value) VALUES (?, ?, ?)")) {
                 pstmt.setInt(1, 1);
                 pstmt.setString(2, "test1");
                 pstmt.setInt(3, 100);
@@ -120,7 +124,7 @@ class DerbyTransactionalTest {
             }
 
             try (Statement stmt = conn.createStatement();
-                 ResultSet rs = stmt.executeQuery("SELECT id, name, value FROM test_table ORDER BY id")) {
+                 ResultSet rs = stmt.executeQuery("SELECT id, name, value FROM derbytransactional_table ORDER BY id")) {
 
                 assertTrue(rs.next(), "Should have first row");
                 assertEquals(1, rs.getInt("id"));
@@ -136,7 +140,7 @@ class DerbyTransactionalTest {
             }
 
             try (Statement stmt = conn.createStatement();
-                 ResultSet rs = stmt.executeQuery("SELECT COUNT(*) as count FROM test_table")) {
+                 ResultSet rs = stmt.executeQuery("SELECT COUNT(*) as count FROM derbytransactional_table")) {
 
                 assertTrue(rs.next(), "Should have count result");
                 assertEquals(2, rs.getInt("count"));
@@ -145,14 +149,14 @@ class DerbyTransactionalTest {
 
         try (Connection conn = DriverManager.getConnection(url)) {
             try (Statement stmt = conn.createStatement();
-                 ResultSet rs = stmt.executeQuery("SELECT COUNT(*) as count FROM test_table")) {
+                 ResultSet rs = stmt.executeQuery("SELECT COUNT(*) as count FROM derbytransactional_table")) {
 
                 assertTrue(rs.next(), "Should have count result");
                 assertEquals(2, rs.getInt("count"), "Two rows should exist after initial insert");
             }
 
             try (Statement stmt = conn.createStatement();
-                 ResultSet rs = stmt.executeQuery("SELECT name, value FROM test_table ORDER BY id")) {
+                 ResultSet rs = stmt.executeQuery("SELECT name, value FROM derbytransactional_table ORDER BY id")) {
 
                 assertTrue(rs.next(), "Should have first row");
                 assertEquals("test1", rs.getString("name"));
@@ -188,13 +192,13 @@ class DerbyTransactionalTest {
         try (Connection conn = DriverManager.getConnection(url)) {
             conn.setAutoCommit(false);
 
-            try (PreparedStatement pstmt = conn.prepareStatement("UPDATE test_table SET value = ? WHERE name = ?")) {
+            try (PreparedStatement pstmt = conn.prepareStatement("UPDATE derbytransactional_table SET value = ? WHERE name = ?")) {
                 pstmt.setInt(1, 150);
                 pstmt.setString(2, "test1");
                 assertEquals(1, pstmt.executeUpdate(), "Should update one row");
             }
 
-            try (PreparedStatement pstmt = conn.prepareStatement("DELETE FROM test_table WHERE name = ?")) {
+            try (PreparedStatement pstmt = conn.prepareStatement("DELETE FROM derbytransactional_table WHERE name = ?")) {
                 pstmt.setString(1, "test2");
                 assertEquals(1, pstmt.executeUpdate(), "Should delete one row");
             }
@@ -202,13 +206,13 @@ class DerbyTransactionalTest {
             conn.commit();
 
             try (Statement stmt = conn.createStatement();
-                 ResultSet rs = stmt.executeQuery("SELECT COUNT(*) as count FROM test_table")) {
+                 ResultSet rs = stmt.executeQuery("SELECT COUNT(*) as count FROM derbytransactional_table")) {
                 assertTrue(rs.next(), "Should have count result");
                 assertEquals(1, rs.getInt("count"), "Only one row should remain after update/delete");
             }
 
             try (Statement stmt = conn.createStatement();
-                 ResultSet rs = stmt.executeQuery("SELECT name, value FROM test_table")) {
+                 ResultSet rs = stmt.executeQuery("SELECT name, value FROM derbytransactional_table")) {
                 assertTrue(rs.next(), "Should have remaining row");
                 assertEquals("test1", rs.getString("name"));
                 assertEquals(150, rs.getInt("value"));
@@ -231,7 +235,8 @@ class DerbyTransactionalTest {
         Path lastLogFile = null;
         long maxSegNum = -1;
 
-        try (var files = Files.walk(testStageDir)) {
+        Path deviceStageDir = Files.list(testStageDir).filter(p -> p.getFileName().toString().startsWith("synclite-derbytransactional-")).findFirst().orElse(testStageDir);
+        try (var files = Files.walk(deviceStageDir)) {
             for (Path path : files.collect(Collectors.toList())) {
                 if (!Files.isRegularFile(path)) {
                     continue;

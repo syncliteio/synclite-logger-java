@@ -63,7 +63,7 @@ public class SyncLiteStoreStatement extends JDBC4Statement {
         String strippedSql = sql.strip();
         String tokens[] = strippedSql.split("\\s+");
         if (tokens[0].equalsIgnoreCase("INSERT") && tokens[1].equalsIgnoreCase("INTO")) {
-            SyncLiteUtils.validateInsertForDBLoggerAndAppender(strippedSql);
+            SyncLiteUtils.validateInsertForDBLoggerAndAppender(strippedSql, getConn(), sqlLogger);
             result = executeInsert(sql);
         } else if ((tokens[0].equalsIgnoreCase("CREATE") || tokens[0].equalsIgnoreCase("DROP") || tokens[0].equalsIgnoreCase("ALTER"))
                 && (tokens[1].equalsIgnoreCase("TABLE"))) {
@@ -123,7 +123,11 @@ public class SyncLiteStoreStatement extends JDBC4Statement {
 
     private final boolean executeDDL(String sql) throws SQLException {
         StringBuilder sqlToLog = new StringBuilder();
-        boolean result = stmtExecute(sql, SyncLiteUtils.getTableNameFromDDL(sql), sqlToLog);
+        String tableNameInDDL = SyncLiteUtils.getTableNameFromDDL(sql);
+        boolean result = stmtExecute(sql, tableNameInDDL, sqlToLog);
+        if (tableNameInDDL != null && sqlLogger != null) {
+            sqlLogger.evictTableFromCache(tableNameInDDL);
+        }
         log(sqlToLog.toString());
         processCommit();
         return result;

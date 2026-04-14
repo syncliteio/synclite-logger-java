@@ -103,12 +103,12 @@ public final class SyncTxnLogger extends TxnLogger {
 
 	@Override
 	protected void terminateInternal() {
+		stopSegmentCreatorService();
 		try {
 			checkups();
 			closeCurrentLogSegment();
-			stopSegmentCreatorService();
 		} catch (SQLException e) {			
-			tracer.error("SyncLite log segment log segment could not be closed properly for device " + dbPath + ", failed with exception : " +  e);
+			tracer.error("SyncLite log segment could not be closed properly for device " + dbPath + ", failed with exception : " +  e);
 		}
 	}
 

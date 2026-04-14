@@ -25,16 +25,18 @@ import org.sqlite.jdbc4.JDBC4PreparedStatement;
 public class DBLoggerPreparedStatement extends JDBC4PreparedStatement {
 	private SQLLogger sqlLogger;
 	private boolean isDDL = false;
+	private String tableNameInDDL;
 	public DBLoggerPreparedStatement(SQLiteConnection conn, String sql) throws SQLException {
 		super(conn, sql);
 		List<String> subSqls = SyncLiteUtils.splitSqls(sql);
 		if (subSqls.size() > 1) {
 			throw new SQLException("Unsupported SQL: SyncLite DBLogger supports a single SQL statement as part of a PreparedStatement, multiple specified  : " + sql);			
 		}
+		SQLLogger logger = EventLogger.findInstance(getConn().getPath());
 		String stippedSql = subSqls.get(0).strip();
 		String[] tokens = stippedSql.split("\\s+");		
 		if (tokens[0].equalsIgnoreCase("INSERT") && tokens[1].equalsIgnoreCase("INTO")) {
-			SyncLiteUtils.validateInsertForDBLoggerAndAppender(stippedSql);
+			SyncLiteUtils.validateInsertForDBLoggerAndAppender(stippedSql, conn, logger);
 		} else if (tokens[0].equalsIgnoreCase("UPDATE")) {
 			SyncLiteUtils.validateUpdateForDBLoggerAndAppender(stippedSql);			
 		} else if (tokens[0].equalsIgnoreCase("DELETE") && tokens[1].equalsIgnoreCase("FROM")) {
@@ -43,12 +45,13 @@ public class DBLoggerPreparedStatement extends JDBC4PreparedStatement {
 				(tokens[1].equalsIgnoreCase("TABLE"))
 				) {
 			this.isDDL = true;
+			this.tableNameInDDL = SyncLiteUtils.getTableNameFromDDL(stippedSql);
 		} else if (tokens[0].equalsIgnoreCase("SELECT")) {
 			//Allowed SQL
 		} else {
 			throw new SQLException("Unsupported SQL: " + sql);
 		}
-		this.sqlLogger = EventLogger.findInstance(getConn().getPath());
+		this.sqlLogger = logger;
 	}
 
 	protected DBLoggerConnection getConn() {
@@ -79,6 +82,9 @@ public class DBLoggerPreparedStatement extends JDBC4PreparedStatement {
 		boolean result = false;
 		if (this.isDDL) {
 			result = super.execute();
+			if (this.sqlLogger != null && this.tableNameInDDL != null) {
+				this.sqlLogger.evictTableFromCache(this.tableNameInDDL);
+			}
 			log();
 			processCommit();
 			return result;

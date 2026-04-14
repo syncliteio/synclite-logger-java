@@ -33,8 +33,9 @@ public class SyncLiteStorePreparedStatement extends JDBC4PreparedStatement {
         super(conn, sql);
         String strippedSql = sql.strip();
         String tokens[] = strippedSql.split("\\s+");
+        SQLLogger logger = EventLogger.findInstance(getConn().getPath());
         if (tokens[0].equalsIgnoreCase("INSERT") && tokens[1].equalsIgnoreCase("INTO")) {
-            SyncLiteUtils.validateInsertForDBLoggerAndAppender(strippedSql);
+            SyncLiteUtils.validateInsertForDBLoggerAndAppender(strippedSql, conn, logger);
         } else if ((tokens[0].equalsIgnoreCase("CREATE") || tokens[0].equalsIgnoreCase("DROP") || tokens[0].equalsIgnoreCase("ALTER"))
                 && (tokens[1].equalsIgnoreCase("TABLE"))) {
             // Allowed DDL
@@ -48,7 +49,7 @@ public class SyncLiteStorePreparedStatement extends JDBC4PreparedStatement {
             throw new SQLException("Unsupported SQL: SyncLite store device does not allow SQL : " + sql
                     + ". Allowed SQLs are CREATE TABLE, DROP TABLE, ALTER TABLE, INSERT INTO, UPDATE, DELETE, SELECT");
         }
-        this.sqlLogger = EventLogger.findInstance(getConn().getPath());
+        this.sqlLogger = logger;
         this.tableNameInDDL = SyncLiteUtils.getTableNameFromDDL(sql);
     }
 
@@ -89,6 +90,9 @@ public class SyncLiteStorePreparedStatement extends JDBC4PreparedStatement {
         int cachedBatchQueryCount = batchQueryCount;
         this.processedRowCount += cachedBatchQueryCount;
         boolean result = pStmtExecute();
+        if (tableNameInDDL != null && sqlLogger != null) {
+            sqlLogger.evictTableFromCache(tableNameInDDL);
+        }
         if (cachedBatchQueryCount == 0) {
             log();
         }

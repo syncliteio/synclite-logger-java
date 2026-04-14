@@ -41,17 +41,20 @@ class StreamingTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        // Create directories in user home following SyncLite pattern
-        Path userHome = Path.of(System.getProperty("user.home"));
-        Path syncLiteHome = userHome.resolve("synclite");
-        Path testHome = syncLiteHome.resolve("test").resolve("StreamingTest");
-        testDbPath = testHome.resolve("db").resolve("test-streaming.db");
+        Path testHome = Path.of(System.getProperty("user.home")).resolve("synclite").resolve("test");
+        testDbPath = testHome.resolve("db").resolve("StreamingTest").resolve("test-streaming.db");
         testStageDir = testHome.resolve("stageDir");
-        testConfigPath = testHome.resolve("synclite_logger.conf");
+        testConfigPath = testDbPath.getParent().resolve("synclite_logger.conf");
 
         // Clean up previous test state before each run
-        if (Files.exists(testHome)) {
-            deleteRecursively(testHome);
+        if (Files.exists(testDbPath.getParent())) {
+            deleteRecursively(testDbPath.getParent());
+        }
+        if (Files.exists(testStageDir)) {
+            try (var stageDirs = Files.list(testStageDir)) {
+                stageDirs.filter(p -> p.getFileName().toString().startsWith("synclite-streaming-"))
+                         .forEach(p -> { try { deleteRecursively(p); } catch (java.io.IOException ignored) {} });
+            }
         }
 
         Files.createDirectories(testDbPath.getParent());
@@ -104,17 +107,19 @@ class StreamingTest {
         try (Connection conn = DriverManager.getConnection(url)) {
             // Create table
             try (Statement stmt = conn.createStatement()) {
-                stmt.execute("CREATE TABLE test_table (id INTEGER PRIMARY KEY, name TEXT, value INTEGER)");
+                stmt.execute("CREATE TABLE streaming_table (id INTEGER PRIMARY KEY, name TEXT, value INTEGER)");
             }
 
             // Insert data
-            try (PreparedStatement pstmt = conn.prepareStatement("INSERT INTO test_table (name, value) VALUES (?, ?)")) {
-                pstmt.setString(1, "test1");
-                pstmt.setInt(2, 100);
+            try (PreparedStatement pstmt = conn.prepareStatement("INSERT INTO streaming_table (id, name, value) VALUES (?, ?, ?)")) {
+                pstmt.setInt(1, 1);
+                pstmt.setString(2, "test1");
+                pstmt.setInt(3, 100);
                 pstmt.addBatch();
 
-                pstmt.setString(1, "test2");
-                pstmt.setInt(2, 200);
+                pstmt.setInt(1, 2);
+                pstmt.setString(2, "test2");
+                pstmt.setInt(3, 200);
                 pstmt.addBatch();
 
                 pstmt.executeBatch();
@@ -143,7 +148,7 @@ class StreamingTest {
             // Attempt UPDATE - streaming device allows only DDL and INSERT.
             // Use ? params so DBLogger parent validation passes and StreamingPreparedStatement throws its own error.
             SQLException updateEx = assertThrows(SQLException.class, () -> {
-                conn.prepareStatement("UPDATE test_table SET value = ? WHERE name = ?");
+                conn.prepareStatement("UPDATE streaming_table SET value = ? WHERE name = ?");
             }, "Streaming device should reject UPDATE");
             assertTrue(updateEx.getMessage().contains("Unsupported SQL"),
                     "Error message should indicate unsupported SQL, got: " + updateEx.getMessage());
@@ -151,19 +156,21 @@ class StreamingTest {
             // Attempt DELETE - streaming device allows only DDL and INSERT.
             // Use ? params so DBLogger parent validation passes and StreamingPreparedStatement throws its own error.
             SQLException deleteEx = assertThrows(SQLException.class, () -> {
-                conn.prepareStatement("DELETE FROM test_table WHERE name = ?");
+                conn.prepareStatement("DELETE FROM streaming_table WHERE name = ?");
             }, "Streaming device should reject DELETE");
             assertTrue(deleteEx.getMessage().contains("Unsupported SQL"),
                     "Error message should indicate unsupported SQL, got: " + deleteEx.getMessage());
 
             // After rejections, insert additional data
-            try (PreparedStatement pstmt = conn.prepareStatement("INSERT INTO test_table (name, value) VALUES (?, ?)")) {
-                pstmt.setString(1, "test3");
-                pstmt.setInt(2, 300);
+            try (PreparedStatement pstmt = conn.prepareStatement("INSERT INTO streaming_table (id, name, value) VALUES (?, ?, ?)")) {
+                pstmt.setInt(1, 3);
+                pstmt.setString(2, "test3");
+                pstmt.setInt(3, 300);
                 pstmt.addBatch();
 
-                pstmt.setString(1, "test4");
-                pstmt.setInt(2, 400);
+                pstmt.setInt(1, 4);
+                pstmt.setString(2, "test4");
+                pstmt.setInt(3, 400);
                 pstmt.addBatch();
 
                 pstmt.executeBatch();
@@ -196,7 +203,8 @@ class StreamingTest {
         Path latestLogFile = null;
         long latestMtime = -1;
 
-        try (var files = Files.walk(testStageDir)) {
+        Path deviceStageDir = Files.list(testStageDir).filter(p -> p.getFileName().toString().startsWith("synclite-streaming-")).findFirst().orElse(testStageDir);
+        try (var files = Files.walk(deviceStageDir)) {
             for (Path path : files.collect(Collectors.toList())) {
                 if (!Files.isRegularFile(path)) {
                     continue;

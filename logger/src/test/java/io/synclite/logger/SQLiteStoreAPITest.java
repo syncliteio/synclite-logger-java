@@ -37,13 +37,18 @@ class SQLiteStoreAPITest {
 
     @BeforeEach
     void setUp() throws Exception {
-        Path testHome = Path.of(System.getProperty("user.home"))
-                .resolve("synclite").resolve("test").resolve("SQLiteStoreAPITest");
-        testDbPath = testHome.resolve("db").resolve("test.db");
+        Path testHome = Path.of(System.getProperty("user.home")).resolve("synclite").resolve("test");
+        testDbPath = testHome.resolve("db").resolve("SQLiteStoreAPITest").resolve("test.db");
         testStageDir = testHome.resolve("stageDir");
-        testConfigPath = testHome.resolve("synclite_logger.conf");
+        testConfigPath = testDbPath.getParent().resolve("synclite_logger.conf");
 
-        if (Files.exists(testHome)) deleteRecursively(testHome);
+        if (Files.exists(testDbPath.getParent())) deleteRecursively(testDbPath.getParent());
+        if (Files.exists(testStageDir)) {
+            try (var stageDirs = Files.list(testStageDir)) {
+                stageDirs.filter(p -> p.getFileName().toString().startsWith("synclite-sqlitestoreapi-"))
+                         .forEach(p -> { try { deleteRecursively(p); } catch (java.io.IOException ignored) {} });
+            }
+        }
         Files.createDirectories(testDbPath.getParent());
         Files.createDirectories(testStageDir);
         Files.writeString(testConfigPath,
@@ -62,7 +67,7 @@ class SQLiteStoreAPITest {
     @Test
     void testAllAPIs() throws Exception {
         try (SyncLiteStore store = SQLiteStore.open(testDbPath)) {
-            runAPITest(store);
+            runAPITest(store, "sqlitestoreapi_players");
         }
         // Flush logs, then cross-check commit_id between synclite_txn and the stage log file.
         SQLiteStore.closeAllDevices();
@@ -70,86 +75,86 @@ class SQLiteStoreAPITest {
         validateCommitId(testDbPath, testStageDir);
     }
 
-    static void runAPITest(SyncLiteStore store) throws Exception {
+    static void runAPITest(SyncLiteStore store, String tableName) throws Exception {
         // --- createTable ---
         Map<String, String> cols = new LinkedHashMap<>();
         cols.put("id", "INTEGER PRIMARY KEY");
         cols.put("name", "VARCHAR(255)");
         cols.put("score", "INTEGER");
-        store.createTable("players", cols);
+        store.createTable(tableName, cols);
 
         // --- insert single row ---
-        store.insert("players", Map.of("id", 1, "name", "Alice", "score", 100));
-        store.insert("players", Map.of("id", 2, "name", "Bob", "score", 200));
+        store.insert(tableName, Map.of("id", 1, "name", "Alice", "score", 100));
+        store.insert(tableName, Map.of("id", 2, "name", "Bob", "score", 200));
 
         // --- selectAll ---
-        List<Map<String, Object>> rows = store.selectAll("players");
+        List<Map<String, Object>> rows = store.selectAll(tableName);
         assertEquals(2, rows.size());
 
         // --- select with where ---
-        List<Map<String, Object>> aliceRows = store.select("players", Map.of("name", "Alice"));
+        List<Map<String, Object>> aliceRows = store.select(tableName, Map.of("name", "Alice"));
         assertEquals(1, aliceRows.size());
         assertEquals(100, ((Number) aliceRows.get(0).get("score")).intValue());
 
         // --- update ---
-        store.update("players", Map.of("score", 999), Map.of("name", "Alice"));
-        List<Map<String, Object>> updated = store.select("players", Map.of("name", "Alice"));
+        store.update(tableName, Map.of("score", 999), Map.of("name", "Alice"));
+        List<Map<String, Object>> updated = store.select(tableName, Map.of("name", "Alice"));
         assertEquals(999, ((Number) updated.get(0).get("score")).intValue());
 
         // --- delete ---
-        store.delete("players", Map.of("name", "Bob"));
-        assertEquals(1, store.selectAll("players").size());
+        store.delete(tableName, Map.of("name", "Bob"));
+        assertEquals(1, store.selectAll(tableName).size());
 
         // --- insertBatch ---
         List<Map<String, Object>> batch = List.of(
                 Map.of("id", 3, "name", "Carol", "score", 300),
                 Map.of("id", 4, "name", "Dave", "score", 400)
         );
-        store.insertBatch("players", batch);
-        assertEquals(3, store.selectAll("players").size());
+        store.insertBatch(tableName, batch);
+        assertEquals(3, store.selectAll(tableName).size());
 
         // --- updateBatch ---
-        store.updateBatch("players",
+        store.updateBatch(tableName,
                 List.of(Map.of("score", 350), Map.of("score", 450)),
                 List.of(Map.of("name", "Carol"), Map.of("name", "Dave")));
-        assertEquals(350, ((Number) store.select("players", Map.of("name", "Carol")).get(0).get("score")).intValue());
-        assertEquals(450, ((Number) store.select("players", Map.of("name", "Dave")).get(0).get("score")).intValue());
+        assertEquals(350, ((Number) store.select(tableName, Map.of("name", "Carol")).get(0).get("score")).intValue());
+        assertEquals(450, ((Number) store.select(tableName, Map.of("name", "Dave")).get(0).get("score")).intValue());
 
         // --- deleteBatch ---
-        store.deleteBatch("players", List.of(Map.of("name", "Carol"), Map.of("name", "Dave")));
-        assertEquals(1, store.selectAll("players").size());
+        store.deleteBatch(tableName, List.of(Map.of("name", "Carol"), Map.of("name", "Dave")));
+        assertEquals(1, store.selectAll(tableName).size());
 
         // --- auto column addition on insert ---
         // Insert a row with a brand-new column "level" that doesn't exist yet.
-        store.insert("players", Map.of("id", 5, "name", "Eve", "score", 500, "level", 7));
-        List<Map<String, Object>> eveRows = store.select("players", Map.of("name", "Eve"));
+        store.insert(tableName, Map.of("id", 5, "name", "Eve", "score", 500, "level", 7));
+        List<Map<String, Object>> eveRows = store.select(tableName, Map.of("name", "Eve"));
         assertEquals(1, eveRows.size());
         assertEquals(7, ((Number) eveRows.get(0).get("level")).intValue());
 
         // --- auto column addition on update ---
         // Update with a new column "badge" that doesn't exist yet.
-        store.update("players", Map.of("badge", "gold"), Map.of("name", "Eve"));
-        List<Map<String, Object>> eveUpdated = store.select("players", Map.of("name", "Eve"));
+        store.update(tableName, Map.of("badge", "gold"), Map.of("name", "Eve"));
+        List<Map<String, Object>> eveUpdated = store.select(tableName, Map.of("name", "Eve"));
         assertEquals("gold", eveUpdated.get(0).get("badge"));
 
         // --- transactional insert + rollback ---
         store.setAutoCommit(false);
-        store.insert("players", Map.of("id", 99, "name", "Temp", "score", 0));
+        store.insert(tableName, Map.of("id", 99, "name", "Temp", "score", 0));
         store.rollback();
-        assertTrue(store.select("players", Map.of("name", "Temp")).isEmpty(),
+        assertTrue(store.select(tableName, Map.of("name", "Temp")).isEmpty(),
                 "Rolled-back row must not be visible");
 
         // --- transactional insert + commit ---
         store.setAutoCommit(false);
-        store.insert("players", Map.of("id", 6, "name", "Frank", "score", 600));
+        store.insert(tableName, Map.of("id", 6, "name", "Frank", "score", 600));
         store.commit();
-        assertEquals(1, store.select("players", Map.of("name", "Frank")).size());
+        assertEquals(1, store.select(tableName, Map.of("name", "Frank")).size());
 
         // --- dropTable ---
-        store.dropTable("players");
+        store.dropTable(tableName);
         // Table is gone; a fresh createTable must succeed
-        store.createTable("players", Map.of("id", "INTEGER PRIMARY KEY"));
-        assertEquals(0, store.selectAll("players").size());
+        store.createTable(tableName, Map.of("id", "INTEGER PRIMARY KEY"));
+        assertEquals(0, store.selectAll(tableName).size());
     }
 
     // -------------------------------------------------------------------------
