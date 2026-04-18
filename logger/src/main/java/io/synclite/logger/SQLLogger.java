@@ -764,7 +764,10 @@ abstract class SQLLogger extends Thread {
 		}
 
 		if (tracer != null) {
-			tracer.getAppender("SyncLiteLogger").close();		
+			org.apache.log4j.Appender appender = tracer.getAppender("SyncLiteLogger");
+			if (appender != null) {
+				appender.close();
+			}
 		}
 		appLock.release();
 	}
