@@ -498,17 +498,26 @@ public class SyncLiteUtils {
 		// Step 1: syntax + column/value consistency (always)
 		validateInsertForDBLoggerAndAppender(strippedSql);
 
-		if (conn == null || logger == null) return;
+		if (conn == null) return;
 
 		// Step 2: extract table name
 		Matcher tableNameMatcher = INSERT_TABLE_NAME_PATTERN.matcher(strippedSql);
 		if (!tableNameMatcher.find()) return;
 		String tableName = tableNameMatcher.group(1);
 
-		// Step 3: lookup (lazily cached) column count for this table
+		// Step 3: lookup column count for this table (use logger cache when available,
+		//         otherwise fall back to a direct PRAGMA query on the connection)
 		int tableColCount;
 		try {
-			tableColCount = logger.getOrLoadTableColumnCount(tableName, conn);
+			if (logger != null) {
+				tableColCount = logger.getOrLoadTableColumnCount(tableName, conn);
+			} else {
+				tableColCount = 0;
+				try (java.sql.Statement stmt = conn.createStatement();
+					 java.sql.ResultSet rs = stmt.executeQuery("PRAGMA table_info(" + tableName.toUpperCase() + ")")) {
+					while (rs.next()) tableColCount++;
+				}
+			}
 		} catch (Exception e) {
 			return; // schema not available yet — skip check
 		}
