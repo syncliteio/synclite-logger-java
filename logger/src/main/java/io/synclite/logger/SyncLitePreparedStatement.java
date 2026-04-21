@@ -32,6 +32,7 @@ public class SyncLitePreparedStatement extends JDBC4PreparedStatement {
         }
         this.sqlLogger = AsyncTxnLogger.findInstance(getConn().getPath());
         this.tableNameInDDL = SyncLiteUtils.getTableNameFromDDL(sql);
+        SyncLiteUtils.validateProtectedInternalTableDDL(sql, this.tableNameInDDL);
     }
 
     protected SyncLiteConnection getConn() {

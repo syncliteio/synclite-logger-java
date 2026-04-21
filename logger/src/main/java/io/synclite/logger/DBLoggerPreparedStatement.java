@@ -46,6 +46,7 @@ public class DBLoggerPreparedStatement extends JDBC4PreparedStatement {
 				) {
 			this.isDDL = true;
 			this.tableNameInDDL = SyncLiteUtils.getTableNameFromDDL(stippedSql);
+			SyncLiteUtils.validateProtectedInternalTableDDL(stippedSql, this.tableNameInDDL);
 		} else if (tokens[0].equalsIgnoreCase("SELECT")) {
 			//Allowed SQL
 		} else {

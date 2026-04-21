@@ -51,6 +51,7 @@ public class SyncLiteStorePreparedStatement extends JDBC4PreparedStatement {
         }
         this.sqlLogger = logger;
         this.tableNameInDDL = SyncLiteUtils.getTableNameFromDDL(sql);
+        SyncLiteUtils.validateProtectedInternalTableDDL(strippedSql, this.tableNameInDDL);
     }
 
     // Package-private: for use by internal API layers (e.g. SyncLiteStore) that generate SQL
