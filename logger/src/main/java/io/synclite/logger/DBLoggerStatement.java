@@ -60,6 +60,7 @@ public class DBLoggerStatement extends JDBC4Statement {
 	}
 
 	public final boolean executeUnlogged(String sql) throws SQLException {
+		SyncLiteUtils.validateProtectedInternalTableDDL(sql, SyncLiteUtils.getTableNameFromDDL(sql));
 		boolean result = super.execute(sql);
 		if (getConn().getUserAutoCommit() == true) {
 			getConn().superCommit();
@@ -193,6 +194,7 @@ public class DBLoggerStatement extends JDBC4Statement {
 	}
 
 	private final boolean executeDDL(String sql) throws SQLException {
+		SyncLiteUtils.validateProtectedInternalTableDDL(sql, SyncLiteUtils.getTableNameFromDDL(sql));
 		boolean result = super.execute(sql);
 		String tableName = SyncLiteUtils.getTableNameFromDDL(sql);
 		if (tableName != null && sqlLogger != null) {

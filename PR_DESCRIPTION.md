@@ -1,60 +1,69 @@
 # PR Description
 
 ## Summary
-This PR fixes INSERT validation behavior when a database connection is available but the SQL logger instance is not yet resolved.
 
-The validation now:
-- continues semantic INSERT validation when `conn` is present,
-- uses logger-backed table column count lookup when logger is available,
-- falls back to direct `PRAGMA table_info(...)` column count lookup when logger is null.
+Block user SQL from dropping `synclite_txn`, the internal transaction-tracking table present in every SyncLite device database (SQLite, DuckDB, Derby, H2, HyperSQL). Dropping this table via user SQL corrupts the device and makes it unrecoverable.
 
-This preserves the current strict requirement that INSERT statements must provide values for all table columns in DBLogger/Appender/Streaming validation paths.
+---
 
-## Problem
-In the previous implementation, validation returned early when either `conn` or `logger` was null.
+## Background
 
-That meant table-column count checks were skipped in cases where:
-- `conn` was available,
-- `logger` was temporarily null.
+Every SyncLite device database file maintains a table named `synclite_txn` that SyncLite uses internally to track transaction state. This table must not be dropped by user-issued SQL. Previously there was no guard preventing this.
 
-As a result, statements could bypass strict column count enforcement in that window.
-
-## Root Cause
-Early return condition was too broad:
-- `if (conn == null || logger == null) return;`
-
-The logger is only required for cached metadata lookup, not for performing the validation itself when connection metadata is accessible.
+---
 
 ## What Changed
-### Code changes
-- Updated early-return condition to require only null connection for short-circuit:
-  - from `if (conn == null || logger == null) return;`
-  - to `if (conn == null) return;`
-- Added fallback path in column count lookup:
-  - use `logger.getOrLoadTableColumnCount(...)` when logger is present,
-  - otherwise execute `PRAGMA table_info(<TABLE>)` on the active connection and count columns.
+
+Added `SyncLiteUtils.validateProtectedInternalTableDDL(String sql, String tableName)` which throws `SQLException` if a `DROP TABLE` targets `synclite_txn` (case-insensitive match).
+
+The guard is called from all user-facing SQL execution paths:
+
+| Class | Device scope |
+|---|---|
+| `DBLoggerStatement` | DBLogger, Streaming (Statement) |
+| `DBLoggerPreparedStatement` | DBLogger, Streaming (PreparedStatement) |
+| `SyncLiteStoreStatement` | Store, Appender (Statement) |
+| `SyncLiteStorePreparedStatement` | Store, Appender (PreparedStatement) |
+| `SyncLiteStatement` | SQLite, DuckDB, Derby, H2, HyperSQL transactional (Statement) |
+| `SyncLitePreparedStatement` | SQLite, DuckDB, Derby, H2, HyperSQL transactional (PreparedStatement) |
+
+For prepared statements the guard fires at `Connection.prepareStatement()` construction time, before any `execute()` call. Internal SyncLite cleanup paths that use raw JDBC (e.g. `SQLLogger.resetDeviceCheckpoint()`) bypass all wrappers and are not affected.
+
+---
 
 ## Files Changed
+
+**Main:**
 - `logger/src/main/java/io/synclite/logger/SyncLiteUtils.java`
-- `PR_DESCRIPTION.md`
+- `logger/src/main/java/io/synclite/logger/DBLoggerStatement.java`
+- `logger/src/main/java/io/synclite/logger/DBLoggerPreparedStatement.java`
+- `logger/src/main/java/io/synclite/logger/SyncLiteStoreStatement.java`
+- `logger/src/main/java/io/synclite/logger/SyncLiteStorePreparedStatement.java`
+- `logger/src/main/java/io/synclite/logger/SyncLiteStatement.java`
+- `logger/src/main/java/io/synclite/logger/SyncLitePreparedStatement.java`
 
-## Behavior Impact
-- INSERT validation remains strict and consistent even when logger lookup is unavailable.
-- No behavior change when logger is available.
+**Tests:**
+- `logger/src/test/java/io/synclite/logger/StreamingTest.java`
+- `logger/src/test/java/io/synclite/logger/SQLiteStoreTest.java`
 
-## Risk Assessment
-Low to medium:
-- Touches validation path only.
-- Fallback query is read-only metadata query (`PRAGMA table_info`).
-- Potential edge case: quoted/special table names continue to rely on existing parser/extractor behavior.
+---
 
 ## Testing
-Manual/observed:
-- Verified no compilation errors in modified file via IDE diagnostics.
 
-Not run in this change set:
-- Full Maven test suite.
+- `StreamingTest.testBasicTableOperations` — asserts `DROP TABLE synclite_txn` throws via both `Statement.execute()` and `Connection.prepareStatement()`, and confirms the table remains queryable afterwards.
+- `SQLiteStoreTest.testBasicTableOperations` — same assertions for the Store device path.
+- All 4 targeted test cases pass.
+
+---
+
+## Risk Assessment
+
+Low. The change only adds a reject path for one specific DDL pattern (`DROP TABLE synclite_txn`). All other DDL on user tables is unaffected. Internal SyncLite reset/cleanup code is not routed through the guarded paths.
+
+---
 
 ## Suggested Reviewer Checks
-- Validate strict INSERT enforcement with and without logger availability.
-- Verify behavior on table names across casing/schema qualifiers.
+
+- Confirm `DROP TABLE synclite_txn` is blocked for all device types (SQLite, DuckDB, Derby, H2, HyperSQL).
+- Confirm `CREATE TABLE`, `ALTER TABLE`, and `DROP TABLE` on user tables are unaffected.
+- Confirm internal device reset/cleanup is not broken.

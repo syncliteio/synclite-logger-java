@@ -41,6 +41,7 @@ public class SyncLiteStoreStatement extends JDBC4Statement {
     }
 
     public final boolean executeUnlogged(String sql) throws SQLException {
+        SyncLiteUtils.validateProtectedInternalTableDDL(sql, SyncLiteUtils.getTableNameFromDDL(sql));
         boolean result = stmtExecute(sql, SyncLiteUtils.getTableNameFromDDL(sql), new StringBuilder());
         if (getConn().getUserAutoCommit() == true) {
             getConn().superCommit();
@@ -124,6 +125,7 @@ public class SyncLiteStoreStatement extends JDBC4Statement {
     private final boolean executeDDL(String sql) throws SQLException {
         StringBuilder sqlToLog = new StringBuilder();
         String tableNameInDDL = SyncLiteUtils.getTableNameFromDDL(sql);
+        SyncLiteUtils.validateProtectedInternalTableDDL(sql, tableNameInDDL);
         boolean result = stmtExecute(sql, tableNameInDDL, sqlToLog);
         if (tableNameInDDL != null && sqlLogger != null) {
             sqlLogger.evictTableFromCache(tableNameInDDL);

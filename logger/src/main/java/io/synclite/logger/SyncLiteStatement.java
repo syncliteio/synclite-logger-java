@@ -39,6 +39,7 @@ public class SyncLiteStatement extends JDBC4Statement {
     }
 
     public final boolean executeUnlogged(String sql) throws SQLException {    	
+        SyncLiteUtils.validateProtectedInternalTableDDL(sql, SyncLiteUtils.getTableNameFromDDL(sql));
         boolean result = stmtExecute(sql, SyncLiteUtils.getTableNameFromDDL(sql), new StringBuilder());
 		if (getConn().getUserAutoCommit() == true) {
 			getConn().connCommit();
@@ -60,8 +61,10 @@ public class SyncLiteStatement extends JDBC4Statement {
     private final boolean executeInternal(String sql) throws SQLException {
     	boolean result = false;
 		StringBuilder sqlToLog = new StringBuilder();
+        String tableNameInDDL = SyncLiteUtils.getTableNameFromDDL(sql);
+        SyncLiteUtils.validateProtectedInternalTableDDL(sql, tableNameInDDL);
     	try {
-    		result = stmtExecute(sql, SyncLiteUtils.getTableNameFromDDL(sql), sqlToLog);
+            result = stmtExecute(sql, tableNameInDDL, sqlToLog);
     	} catch (SQLException e) {
     		if (e.getMessage().contains("syntax error") || e.getMessage().contains("Parse error")) {
     			try {
@@ -86,8 +89,10 @@ public class SyncLiteStatement extends JDBC4Statement {
     private final int executeUpdateInternal(String sql) throws SQLException {
     	int result = 0;
 		StringBuilder sqlToLog = new StringBuilder();
+        String tableNameInDDL = SyncLiteUtils.getTableNameFromDDL(sql);
+        SyncLiteUtils.validateProtectedInternalTableDDL(sql, tableNameInDDL);
     	try {
-    		result = stmtExecuteUpdate(sql, SyncLiteUtils.getTableNameFromDDL(sql), sqlToLog);
+            result = stmtExecuteUpdate(sql, tableNameInDDL, sqlToLog);
     	} catch (SQLException e) {
     		if (e.getMessage().contains("syntax error") || e.getMessage().contains("Parse error")) {
     			try {
@@ -125,6 +130,7 @@ public class SyncLiteStatement extends JDBC4Statement {
     	ResultSet rs = null;
         try {
         	String tableNameInDDL = SyncLiteUtils.getTableNameFromDDL(sql);
+			SyncLiteUtils.validateProtectedInternalTableDDL(sql, tableNameInDDL);
         	rs = stmtExecuteQuery(sql, tableNameInDDL);
             if (tableNameInDDL != null) {
                 log(sql);
@@ -165,6 +171,7 @@ public class SyncLiteStatement extends JDBC4Statement {
     }
 
     public final int executeUnloggedUpdate(String sql) throws SQLException {    	
+        SyncLiteUtils.validateProtectedInternalTableDDL(sql, SyncLiteUtils.getTableNameFromDDL(sql));
         return stmtExecuteUpdate(sql, SyncLiteUtils.getTableNameFromDDL(sql), new StringBuilder());
     }
 

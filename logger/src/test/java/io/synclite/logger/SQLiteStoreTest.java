@@ -99,6 +99,23 @@ class SQLiteStoreTest {
 
         // First transaction: create table and insert data
         try (Connection conn = DriverManager.getConnection(url)) {
+            SQLException protectedStmtEx;
+            try (Statement stmt = conn.createStatement()) {
+                protectedStmtEx = assertThrows(SQLException.class, () -> stmt.execute("DROP TABLE synclite_txn"));
+            }
+            assertTrue(protectedStmtEx.getMessage().contains("Protected internal table 'synclite_txn'"),
+                    "Statement drop should be blocked with protected-table message");
+
+                SQLException protectedPstmtEx = assertThrows(SQLException.class,
+                    () -> conn.prepareStatement("DROP TABLE synclite_txn"));
+                assertTrue(protectedPstmtEx.getMessage().contains("Protected internal table 'synclite_txn'"),
+                    "PreparedStatement drop should be blocked with protected-table message");
+
+            try (Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery("SELECT commit_id FROM synclite_txn")) {
+                assertTrue(rs.next(), "synclite_txn must still exist after blocked drop attempts");
+            }
+
             try (Statement stmt = conn.createStatement()) {
                 stmt.execute("CREATE TABLE sqlitestore_table (id INTEGER PRIMARY KEY, name TEXT, value INTEGER)");
             }

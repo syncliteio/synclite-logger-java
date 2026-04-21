@@ -68,6 +68,7 @@ public class SyncLiteUtils {
 	private static final Pattern DDL_ALTER_COLUMN_PATTERN  = Pattern.compile("ALTER\\s+(?:COLUMN)?", Pattern.CASE_INSENSITIVE);
 	private static final Pattern DDL_RENAME_TO_PATTERN     = Pattern.compile("RENAME\\s+TO", Pattern.CASE_INSENSITIVE);
 	private static final Pattern DDL_RENAME_COLUMN_PATTERN = Pattern.compile("RENAME\\s+(?:COLUMN)?", Pattern.CASE_INSENSITIVE);
+	private static final String PROTECTED_TXN_TABLE_NAME = "SYNCLITE_TXN";
 
 	static final List<String> splitSqls(String sql) {
 		List<String> sqls = new ArrayList<String>();
@@ -597,6 +598,17 @@ public class SyncLiteUtils {
             }
         }
 		return tableName;
+	}
+
+	final static void validateProtectedInternalTableDDL(String sql, String tableName) throws SQLException {
+		if (tableName == null) {
+			return;
+		}
+
+		String strippedSql = sql.stripLeading();
+		if (strippedSql.regionMatches(true, 0, "DROP", 0, 4) && PROTECTED_TXN_TABLE_NAME.equalsIgnoreCase(tableName)) {
+			throw new SQLException("Protected internal table 'synclite_txn' cannot be dropped by user SQL.");
+		}
 	}
 
 
