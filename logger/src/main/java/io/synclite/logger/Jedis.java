@@ -16,6 +16,7 @@
 
 package io.synclite.logger;
 
+import java.nio.file.Path;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -53,14 +54,20 @@ import redis.clients.jedis.resps.Tuple;
  *
  * <p><strong>Usage:</strong>
  * <pre>
+ *   // Explicit store lifecycle (advanced)
  *   SQLiteStore.initialize(dbPath, configPath);
- *
  *   try (SyncLiteStore store = SQLiteStore.open(dbPath);
  *        Jedis jedis = Jedis.builder(store).host("redis-host").port(6380).build()) {
  *
  *       jedis.set("user:1:name", "Alice");
  *       jedis.hset("session:42", "token", "abc123");
  *       String name = jedis.get("user:1:name");   // reads from Redis
+ *   }
+ *
+ *   // Managed store lifecycle (simple)
+ *   try (Jedis jedis = Jedis.builder(dbPath, configPath, "jedis-device")
+ *           .host("redis-host").port(6380).build()) {
+ *       jedis.set("user:1:name", "Alice");
  *   }
  * </pre>
  *
@@ -93,6 +100,8 @@ public class Jedis extends redis.clients.jedis.Jedis {
     private static final long DEFAULT_PURGE_INTERVAL_SECONDS = 60L;
 
     private final SyncLiteStore store;
+    private final boolean managesStoreLifecycle;
+    private final Path managedStoreDbPath;
     private final ScheduledExecutorService purgeScheduler;
 
     // -------------------------------------------------------------------------
@@ -106,6 +115,27 @@ public class Jedis extends redis.clients.jedis.Jedis {
      */
     public static Builder builder(SyncLiteStore store) {
         return new Builder().store(store);
+    }
+
+    /**
+     * Returns a new {@link Builder} that manages a SQLiteStore lifecycle internally.
+     *
+     * <p>On {@link Builder#build()}, this path will call:
+     * <pre>
+     *   SQLiteStore.initialize(storeDbPath, configPath)
+     *   SQLiteStore.open(storeDbPath)
+     * </pre>
+     * and on {@link #close()} it will close the opened store and device.
+     */
+    public static Builder builder(Path storeDbPath, Path configPath) {
+        return new Builder().sqliteStore(storeDbPath, configPath);
+    }
+
+    /**
+     * Same as {@link #builder(Path, Path)} with explicit SyncLite device name.
+     */
+    public static Builder builder(Path storeDbPath, Path configPath, String deviceName) {
+        return new Builder().sqliteStore(storeDbPath, configPath, deviceName);
     }
 
     /**
@@ -133,11 +163,44 @@ public class Jedis extends redis.clients.jedis.Jedis {
         private int      port          = 6379;
         private long     purgeInterval = DEFAULT_PURGE_INTERVAL_SECONDS;
         private TimeUnit purgeUnit     = TimeUnit.SECONDS;
+        private boolean  manageStoreLifecycle;
+        private Path     managedStoreDbPath;
+        private Path     managedStoreConfigPath;
+        private String   managedStoreDeviceName;
 
         private Builder() {}
 
         public Builder store(SyncLiteStore store) {
             this.store = store;
+            this.manageStoreLifecycle = false;
+            this.managedStoreDbPath = null;
+            this.managedStoreConfigPath = null;
+            this.managedStoreDeviceName = null;
+            return this;
+        }
+
+        /**
+         * Configures this builder to initialize/open SQLiteStore internally.
+         */
+        public Builder sqliteStore(Path dbPath, Path configPath) {
+            this.store = null;
+            this.manageStoreLifecycle = true;
+            this.managedStoreDbPath = dbPath;
+            this.managedStoreConfigPath = configPath;
+            this.managedStoreDeviceName = null;
+            return this;
+        }
+
+        /**
+         * Configures this builder to initialize/open SQLiteStore internally
+         * with a custom SyncLite device name.
+         */
+        public Builder sqliteStore(Path dbPath, Path configPath, String deviceName) {
+            this.store = null;
+            this.manageStoreLifecycle = true;
+            this.managedStoreDbPath = dbPath;
+            this.managedStoreConfigPath = configPath;
+            this.managedStoreDeviceName = deviceName;
             return this;
         }
 
@@ -159,10 +222,44 @@ public class Jedis extends redis.clients.jedis.Jedis {
         }
 
         public Jedis build() throws SQLException {
-            if (store == null) {
-                throw new IllegalStateException("SyncLiteStore must be provided via store()");
+            SyncLiteStore resolvedStore = this.store;
+            boolean resolvedManaged = false;
+            Path resolvedDbPath = null;
+
+            if (resolvedStore == null) {
+                if (!manageStoreLifecycle || managedStoreDbPath == null || managedStoreConfigPath == null) {
+                    throw new IllegalStateException("Either provide store(...) or sqliteStore(dbPath, configPath)");
+                }
+
+                if (managedStoreDeviceName != null && !managedStoreDeviceName.isBlank()) {
+                    SQLiteStore.initialize(managedStoreDbPath, managedStoreConfigPath, managedStoreDeviceName);
+                } else {
+                    SQLiteStore.initialize(managedStoreDbPath, managedStoreConfigPath);
+                }
+                resolvedStore = SQLiteStore.open(managedStoreDbPath);
+                resolvedManaged = true;
+                resolvedDbPath = managedStoreDbPath;
             }
-            return new Jedis(this);
+
+            this.store = resolvedStore;
+
+            try {
+                return new Jedis(this, resolvedManaged, resolvedDbPath);
+            } catch (SQLException e) {
+                if (resolvedManaged && resolvedStore != null) {
+                    try {
+                        resolvedStore.close();
+                    } catch (SQLException ignored) {
+                    }
+                    if (resolvedDbPath != null) {
+                        try {
+                            SQLiteStore.closeDevice(resolvedDbPath);
+                        } catch (SQLException ignored) {
+                        }
+                    }
+                }
+                throw e;
+            }
         }
     }
 
@@ -170,9 +267,11 @@ public class Jedis extends redis.clients.jedis.Jedis {
     // Constructor (private — use Builder)
     // -------------------------------------------------------------------------
 
-    private Jedis(Builder b) throws SQLException {
+    private Jedis(Builder b, boolean managesStoreLifecycle, Path managedStoreDbPath) throws SQLException {
         super(b.host, b.port);
         this.store = b.store;
+        this.managesStoreLifecycle = managesStoreLifecycle;
+        this.managedStoreDbPath = managedStoreDbPath;
         this.purgeScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "jedis-purge");
             t.setDaemon(true);
@@ -1314,12 +1413,37 @@ public class Jedis extends redis.clients.jedis.Jedis {
 
     /**
      * Closes the Redis connection and shuts down the background purge scheduler.
-     * The {@link SyncLiteStore} is <em>not</em> closed — its lifecycle is managed by the caller.
+     * The {@link SyncLiteStore} is closed only when this instance created it via
+     * managed builder methods.
      */
     @Override
     public void close() {
         purgeScheduler.shutdownNow();
-        super.close();
+        SQLException storeCloseError = null;
+        try {
+            if (managesStoreLifecycle) {
+                try {
+                    store.close();
+                } catch (SQLException e) {
+                    storeCloseError = e;
+                }
+                if (managedStoreDbPath != null) {
+                    try {
+                        SQLiteStore.closeDevice(managedStoreDbPath);
+                    } catch (SQLException e) {
+                        if (storeCloseError == null) {
+                            storeCloseError = e;
+                        }
+                    }
+                }
+            }
+        } finally {
+            super.close();
+        }
+
+        if (storeCloseError != null) {
+            throw new JedisException("Failed closing managed SyncLiteStore", storeCloseError);
+        }
     }
 
     // -------------------------------------------------------------------------

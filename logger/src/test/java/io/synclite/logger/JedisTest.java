@@ -592,6 +592,63 @@ class JedisTest {
         }
     }
 
+    @Test
+    void testManagedBuilderAutoInitializesStoreLifecycle() throws Exception {
+        Path testHome = Path.of(System.getProperty("user.home")).resolve("synclite").resolve("test");
+        Path testDbPath = testHome.resolve("db").resolve("JedisManagedBuilderTest").resolve("test.db");
+        Path testStageDir = testHome.resolve("stageDir");
+
+        for (int attempt = 0; attempt < 20 && Files.exists(testDbPath.getParent()); attempt++) {
+            try { deleteRecursively(testDbPath.getParent()); break; }
+            catch (IOException e) { Thread.sleep(200); }
+        }
+        if (Files.exists(testStageDir)) {
+            try (var dirs = Files.list(testStageDir)) {
+                dirs.filter(p -> p.getFileName().toString().startsWith("synclite-jedismanaged-"))
+                    .forEach(p -> { try { deleteRecursively(p); } catch (IOException ignored) {} });
+            }
+        }
+
+        Files.createDirectories(testDbPath.getParent());
+        Files.createDirectories(testStageDir);
+
+        Path configPath = testDbPath.getParent().resolve("synclite_logger.conf");
+        Files.writeString(configPath,
+                "local-data-stage-directory = " + testStageDir + "\n" +
+                "destination-type = FS\n");
+
+        try (Jedis jedis = Jedis.builder(testDbPath, configPath, "jedismanaged")
+                .host(redisHost)
+                .port(redisPort)
+                .build()) {
+            jedis.set("managed:k1", "v1");
+            assertEquals("v1", jedis.get("managed:k1"));
+        }
+
+        // Store/device lifecycle is managed by Jedis; data should still be durable.
+        try (SyncLiteStore store = SQLiteStore.open(testDbPath)) {
+            List<Map<String, Object>> rows = store.select(Jedis.STRINGS_TABLE, Map.of("key", "managed:k1"));
+            assertEquals(1, rows.size());
+            assertEquals("v1", rows.get(0).get("value"));
+        }
+
+        // Validate warm-up from store using managed builder only (no explicit initialize/open).
+        try (redis.clients.jedis.Jedis raw = new redis.clients.jedis.Jedis(redisHost, redisPort)) {
+            raw.del("managed:k1");
+            assertNull(raw.get("managed:k1"));
+        }
+
+        try (Jedis jedis = Jedis.builder(testDbPath, configPath, "jedismanaged")
+                .host(redisHost)
+                .port(redisPort)
+                .build()) {
+            assertEquals("v1", jedis.get("managed:k1"));
+        }
+
+        SQLiteStore.closeAllDevices();
+        Thread.sleep(150);
+    }
+
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
