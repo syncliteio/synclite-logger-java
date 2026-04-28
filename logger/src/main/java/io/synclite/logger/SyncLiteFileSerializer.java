@@ -22,6 +22,7 @@ import java.io.ObjectOutput;
 import java.io.ObjectOutputStream;
 import java.util.Map;
 
+import org.apache.kafka.common.errors.SerializationException;
 import org.apache.kafka.common.serialization.Serializer;
 
 public class SyncLiteFileSerializer implements Serializer<Map<?,?>> {
@@ -35,8 +36,8 @@ public class SyncLiteFileSerializer implements Serializer<Map<?,?>> {
 			out = new ObjectOutputStream(baos);
 			out.writeObject(data);
 			stream = baos.toByteArray();
-		} catch (IOException e) {	
-			//Not handled here, will be handled in caller by checking bytes.
+		} catch (IOException e) {
+			throw new SerializationException("Failed to serialize SyncLite file data to Kafka message", e);
 		} finally {
 			try {
 				if (out != null) {

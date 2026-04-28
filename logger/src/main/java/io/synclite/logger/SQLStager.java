@@ -64,10 +64,11 @@ abstract class SQLStager {
 		String argList = SyncLiteUtils.prepareArgList(inlinedArgCnt);
 		String fillerList = SyncLiteUtils.preparePStmtFillerList(inlinedArgCnt + 4);
 		try (Statement stmt = logTableConn.createStatement()) {
-			stmt.execute("pragma journal_mode = normal;");
-			stmt.execute("pragma synchronous = normal;");
+			stmt.execute("pragma journal_mode = delete;");
+			stmt.execute("pragma synchronous = full;");
+			stmt.execute("pragma locking_mode = exclusive;");
 			stmt.execute("pragma temp_store = memory;");
-			stmt.execute("pragma mmap_size = 30000000000;");
+			stmt.execute("pragma mmap_size = 0;");
 			stmt.execute("pragma page_size = " + options.getLogSegmentPageSize()+ ";");
 			stmt.execute(createLogTableSqlTemplate.replace("$1", argList));
 		}
