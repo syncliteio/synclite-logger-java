@@ -179,8 +179,7 @@ public class KafkaArchiver extends FSArchiver {
             return;
         }
         super.createWriteArchiveIfNotExists();
-        try {        	
-    		AdminClient adminClient = KafkaAdminClient.create(getProducerProperties());
+        try (AdminClient adminClient = KafkaAdminClient.create(getProducerProperties())) {
     		List<NewTopic> newTopics = new ArrayList<NewTopic>(1);
     		short replFactor = getReplicationFactor();
     		newTopics.add(new NewTopic(producerTopicName, 1, (short) 1));
@@ -220,8 +219,15 @@ public class KafkaArchiver extends FSArchiver {
 
 		long fileSize = Files.size(filePath);
 		if (fileSize > FILE_CHUNK_SIZE) {
-			long numChunks = fileSize / FILE_CHUNK_SIZE;
-			int lastChunkSize = (int) (fileSize - (numChunks * FILE_CHUNK_SIZE));
+			int lastChunkSize = (int) (fileSize % FILE_CHUNK_SIZE);
+			long numChunks;
+			if (lastChunkSize == 0) {
+				// file is an exact multiple of FILE_CHUNK_SIZE: all chunks are full-sized
+				numChunks = fileSize / FILE_CHUNK_SIZE;
+				lastChunkSize = FILE_CHUNK_SIZE;
+			} else {
+				numChunks = fileSize / FILE_CHUNK_SIZE + 1;
+			}
 			try (FileInputStream fis = new FileInputStream(filePath.toFile())) {
 				int result = 0;
 				long chunkIndex = 1;

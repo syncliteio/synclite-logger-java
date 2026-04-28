@@ -47,7 +47,7 @@ class SFTPArchiver extends FSArchiver {
         this.user = user;
         this.password = password;
         this.remoteDataDirectory = remoteDataDirectory.replace("\\", "/");
-        if (this.remoteCommandDirectory != null) {
+        if (remoteCommandDirectory != null) {
         	this.remoteCommandDirectory = remoteCommandDirectory.replace("\\", "/");
         }
         //connect();

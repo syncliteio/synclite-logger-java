@@ -32,6 +32,8 @@ import java.security.NoSuchAlgorithmException;
 import java.security.PublicKey;
 import java.security.SecureRandom;
 import java.security.spec.InvalidKeySpecException;
+import java.security.spec.MGF1ParameterSpec;
+import javax.crypto.spec.PSource;
 import java.security.spec.X509EncodedKeySpec;
 import java.sql.SQLException;
 import java.util.Collections;
@@ -45,6 +47,7 @@ import javax.crypto.KeyGenerator;
 import javax.crypto.NoSuchPaddingException;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.OAEPParameterSpec;
 
 import org.apache.log4j.Logger;
 
@@ -108,6 +111,7 @@ class FSArchiver {
 
 	private class EncryptedFileCopier extends FileCopier {
 		private static final int ENCRYPTION_BLOCK_SIZE = 2048;
+		private PublicKey cachedPublicKey;
 
 		@Override
 		protected void moveFile(Path sourcePath, Path targetPath) throws SQLException {    		
@@ -121,12 +125,15 @@ class FSArchiver {
 		}
 
 		private final PublicKey readPubKeyFromFile() throws SQLException{
+			if (cachedPublicKey != null) {
+				return cachedPublicKey;
+			}
 			try {
 				byte[] bytes = Files.readAllBytes(encryptionKeyFile);
 				X509EncodedKeySpec keySpec = new X509EncodedKeySpec(bytes);
 				KeyFactory keyFactory = KeyFactory.getInstance("RSA");
-				PublicKey publicKey = keyFactory.generatePublic(keySpec);
-				return publicKey;
+				cachedPublicKey = keyFactory.generatePublic(keySpec);
+				return cachedPublicKey;
 			} catch(IOException | NoSuchAlgorithmException | InvalidKeySpecException e) {
 				throw new SQLException("Failed to load public key from the specified file : " + encryptionKeyFile, e);
 			}
@@ -135,11 +142,12 @@ class FSArchiver {
 		private final byte[] encryptKey(byte[] data) throws SQLException {
 			try {
 				PublicKey pubKey = readPubKeyFromFile();
-				Cipher cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding");
-				cipher.init(Cipher.ENCRYPT_MODE, pubKey);
+				Cipher cipher = Cipher.getInstance("RSA/ECB/OAEPWithSHA-256AndMGF1Padding");
+				OAEPParameterSpec oaepParams = new OAEPParameterSpec("SHA-256", "MGF1", new MGF1ParameterSpec("SHA-256"), PSource.PSpecified.DEFAULT);
+				cipher.init(Cipher.ENCRYPT_MODE, pubKey, oaepParams);
 				byte[] encryptedData = cipher.doFinal(data); 
 				return encryptedData;
-			} catch(InvalidKeyException | NoSuchAlgorithmException | NoSuchPaddingException | SQLException | IllegalBlockSizeException | BadPaddingException e) {
+			} catch(InvalidKeyException | NoSuchAlgorithmException | NoSuchPaddingException | InvalidAlgorithmParameterException | SQLException | IllegalBlockSizeException | BadPaddingException e) {
 				throw new SQLException("Failed to encrypt key ", e);
 			}
 		}
