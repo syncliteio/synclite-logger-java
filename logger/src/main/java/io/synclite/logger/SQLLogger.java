@@ -566,6 +566,10 @@ abstract class SQLLogger extends Thread {
 		additionalPrepStmts.clear();
 	}
 
+	final boolean hasPendingLogs() {
+		return currentBatchLogCount > 0;
+	}
+
 	protected final void executeLogBatch() throws SQLException {
 		insertLogTablePstmt.executeBatch();
 		for (PreparedStatement pstmt : additionalPrepStmts) {

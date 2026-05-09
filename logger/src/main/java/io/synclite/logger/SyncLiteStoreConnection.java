@@ -199,6 +199,9 @@ public class SyncLiteStoreConnection extends JDBC4Connection {
 
     @Override
     public void commit() throws SQLException {
+        if (!this.sqlLogger.hasPendingLogs()) {
+            return;
+        }
         recordCommit();
         this.sqlLogger.commit(commitId);
         connCommit();

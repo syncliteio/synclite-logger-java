@@ -84,6 +84,7 @@ public class SyncEventLogger extends EventLogger {
 	
 	@Override
 	protected void doRollback() throws SQLException {
+		clearLogBatch();
 		rollbackLogSegment();
 		synchronized (txnInProgress) {
 			txnInProgress.set(false);

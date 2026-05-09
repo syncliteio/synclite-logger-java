@@ -135,6 +135,7 @@ public final class SyncTxnLogger extends TxnLogger {
 
 	@Override
 	protected void logRollbackAndFlush(long commitId) throws SQLException {
+		executeLogBatch();
 		undoLogsForCommit(commitId);
 		commitLogSegment();
 		synchronized (txnLock) {
