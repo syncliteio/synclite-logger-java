@@ -87,6 +87,7 @@ public abstract class EventLogger extends SQLLogger {
 	}   
 	
 	protected void doRollback() throws SQLException {
+		clearLogBatch();
 		rollbackLogSegment();
 	}
 
