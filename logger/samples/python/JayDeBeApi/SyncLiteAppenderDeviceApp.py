@@ -36,16 +36,17 @@ props = {
 }
 
 conn = jaydebeapi.connect(
-    "io.synclite.logger.SQLiteAppender",
-    "jdbc:synclite_sqlite_appender:sample_appender_sqlite_py.db",
+    "io.synclite.logger.SQLiteStore",
+    "jdbc:synclite_sqlite_store:sample_store_sqlite_py.db",
     props,
     "synclite-logger-<version>.jar"
 )
 
 cur = conn.cursor()
 cur.execute("CREATE TABLE IF NOT EXISTS feedback(rating INT, comment TEXT)")
-# Keep this sample insert-focused to reflect appender-style usage.
+# Demonstrate INSERT, UPDATE and DELETE on a Store device.
 cur.executemany("INSERT INTO feedback VALUES(?, ?)", [[4, "Excellent Product"], [5, "Outstanding Product"]])
-cur.execute("close database sample_appender_sqlite_py.db")
+cur.execute("UPDATE feedback SET comment = ? WHERE rating = ?", ("Excellent Product (updated)", 4))
+cur.execute("DELETE FROM feedback WHERE rating = ?", (5,))
 cur.close()
 conn.close()

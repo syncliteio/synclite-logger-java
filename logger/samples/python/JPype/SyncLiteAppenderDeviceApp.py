@@ -30,19 +30,21 @@ def main():
 
     from java.nio.file import Path
     from java.sql import DriverManager
-    from io.synclite.logger import SQLiteAppender
+    from io.synclite.logger import SQLiteStore
 
-    db_path = Path.of("sample_appender_sqlite_jpype.db")
-    SQLiteAppender.initialize(db_path, Path.of("synclite_logger.conf"))
+    db_path = Path.of("sample_store_sqlite_jpype.db")
+    SQLiteStore.initialize(db_path, Path.of("synclite_logger.conf"))
 
-    conn = DriverManager.getConnection("jdbc:synclite_sqlite_appender:sample_appender_sqlite_jpype.db")
+    conn = DriverManager.getConnection("jdbc:synclite_sqlite_store:sample_store_sqlite_jpype.db")
     stmt = conn.createStatement()
     stmt.execute("CREATE TABLE IF NOT EXISTS feedback(rating INT, comment TEXT)")
     stmt.execute("INSERT INTO feedback VALUES(4, 'Excellent Product')")
     stmt.execute("INSERT INTO feedback VALUES(5, 'Outstanding Product')")
+    stmt.execute("UPDATE feedback SET comment = 'Excellent Product (updated)' WHERE rating = 4")
+    stmt.execute("DELETE FROM feedback WHERE rating = 5")
     stmt.close()
     conn.close()
-    SQLiteAppender.closeDevice(db_path)
+    SQLiteStore.closeDevice(db_path)
 
 
 if __name__ == "__main__":

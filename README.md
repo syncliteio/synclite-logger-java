@@ -23,25 +23,15 @@ Your App  +  SyncLite Logger  +  Embedded DB
 
 ## Device Types
 
-| Device Type | Embedded DB | Best For |
-|---|---|---|
-| `SQLITE` | SQLite | Edge/desktop apps, offline-first, GenAI/RAG |
-| `DUCKDB` | DuckDB | Analytical edge workloads, columnar data |
-| `DERBY` | Apache Derby | Embedded Java enterprise apps |
-| `H2` | H2 | Test environments, Spring Boot apps |
-| `HYPERSQL` | HyperSQL | Lightweight in-process SQL apps |
-| `SQLITE_APPENDER` | SQLite | High-throughput append-only pipelines |
-| `DUCKDB_APPENDER` | DuckDB | Analytical streaming ingestion |
-| `DERBY_APPENDER` | Apache Derby | Java streaming ingestion |
-| `H2_APPENDER` | H2 | Low-latency append-only writes |
-| `HYPERSQL_APPENDER` | HyperSQL | Lightweight append-only streaming |
-| `SQLITE_STORE` | SQLite | Key-value CRUD store with SyncLiteStore / Jedis API |
-| `DUCKDB_STORE` | DuckDB | Analytical store with SyncLiteStore API |
-| `DERBY_STORE` | Apache Derby | Java embedded store with SyncLiteStore API |
-| `H2_STORE` | H2 | In-process store with SyncLiteStore API |
-| `HYPERSQL_STORE` | HyperSQL | Lightweight store with SyncLiteStore API |
-| `STREAMING` | In-memory | Pure log streaming, Kafka Producer / SyncLiteStream API |
+SyncLite devices fall into three primary categories. Wherever the docs talk about "devices" use this classification:
 
+- **SQL Devices** — Full SQL-compatible embedded databases (SQLite, DuckDB, Derby, H2, HyperSQL). Use these when your app needs the full SQL surface (arbitrary queries, DDL, DML). The replication flow for SQL devices captures SQL/command logs which the Consolidator later processes into CDC-like records for destinations.
+
+- **Store Devices** — CRUD-focused store variants (e.g. `SQLITE_STORE`, `DUCKDB_STORE`, `DERBY_STORE`, `H2_STORE`, `HYPERSQL_STORE`) exposing the `SyncLiteStore` API. Store devices provide typed `insert` / `update` / `delete` / `selectAll` methods, automatic schema evolution, and logs that are applied directly to destinations without the two-step deduce-and-apply processing required for general SQL devices.
+
+- **Streaming Device** — The `STREAMING` device models append-only ingestion with `SyncLiteStream` semantics (fluent `insert` / `insertBatch`). It is optimized for high-throughput event capture and does not support UPDATE/DELETE semantics.
+
+Note: internal device types such as Appender and DBLogger remain implementation details and are intentionally omitted from user-facing documentation.
 ## Quick Start
 
 ### 1. Add the dependency
@@ -242,7 +232,7 @@ All sample applications live under `logger/samples/`:
 
 ```
 logger/samples/
-├── java/          # Java sample apps (transactional, streaming, appender)
+├── java/          # Java sample apps (SQL, streaming, appender)
 └── python/        # Python sample apps
 ```
 
@@ -278,9 +268,9 @@ The compiled JAR is placed under `logger/target/`.
 
 ## Documentation & Community
 
-- Full documentation: https://www.synclite.io/resources/documentation
-- SyncLite Logger configuration reference: https://www.synclite.io/resources/documentation
-- Slack workspace: https://join.slack.com/t/syncliteworkspace/shared_invite/zt-2pz945vva-uuKapsubC9Mu~uYDRKo6Jw
+- Full documentation: https://github.com/syncliteio/SyncLite/blob/main/DOCUMENTATION.md
+- SyncLite Logger configuration reference: https://github.com/syncliteio/SyncLite/blob/main/DOCUMENTATION.md
+- Community: https://github.com/syncliteio/SyncLite/issues
 - Website: https://www.synclite.io
 
 ---
