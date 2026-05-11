@@ -67,7 +67,7 @@ class SQLiteStoreUnloggedAPITest {
         Class.forName("io.synclite.logger.SQLiteStore");
 
         // -------------------------------------------------------------------------
-        // Phase 0: baseline â€” create "players" table and insert one logged row.
+        // Phase 0: baseline create "players" table and insert one logged row.
         // -------------------------------------------------------------------------
         SQLiteStore.initialize(testDbPath, testConfigPath, "unloggedtest");
         try (SyncLiteStore store = SQLiteStore.open(testDbPath)) {
@@ -85,7 +85,7 @@ class SQLiteStoreUnloggedAPITest {
         assertTrue(baselineCount > 0, "Baseline must produce at least one commandlog entry");
 
         // -------------------------------------------------------------------------
-        // Phase 1: openUnlogged â€” writes go to DB only, commandlog unchanged.
+        // Phase 1: openUnlogged writes go to DB only, commandlog unchanged.
         // -------------------------------------------------------------------------
         SQLiteStore.initialize(testDbPath, testConfigPath, "unloggedtest");
         try (SyncLiteStore store = SQLiteStore.openUnlogged(testDbPath)) {
@@ -101,7 +101,7 @@ class SQLiteStoreUnloggedAPITest {
                 "All three rows (1 logged + 2 unlogged) must be present in the device DB");
 
         // -------------------------------------------------------------------------
-        // Phase 2: insertUnlogged â€” single unlogged insert.
+        // Phase 2: insertUnlogged single unlogged insert.
         // -------------------------------------------------------------------------
         SQLiteStore.initialize(testDbPath, testConfigPath, "unloggedtest");
         long countBefore = countAllCommandlogEntries(testStageDir);
@@ -117,7 +117,7 @@ class SQLiteStoreUnloggedAPITest {
         assertEquals("Unlogged", rawScalar(testDbPath, "SELECT name FROM unlogged_players WHERE id=10"));
 
         // -------------------------------------------------------------------------
-        // Phase 3: insertBatchUnlogged â€” batch of 3 unlogged inserts.
+        // Phase 3: insertBatchUnlogged batch of 3 unlogged inserts.
         // -------------------------------------------------------------------------
         SQLiteStore.initialize(testDbPath, testConfigPath, "unloggedtest");
         countBefore = countAllCommandlogEntries(testStageDir);
@@ -136,7 +136,7 @@ class SQLiteStoreUnloggedAPITest {
         assertEquals(7, rawRowCount(testDbPath, "unlogged_players"));
 
         // -------------------------------------------------------------------------
-        // Phase 4: updateUnlogged â€” update one row without a commandlog entry.
+        // Phase 4: updateUnlogged update one row without a commandlog entry.
         // -------------------------------------------------------------------------
         SQLiteStore.initialize(testDbPath, testConfigPath, "unloggedtest");
         countBefore = countAllCommandlogEntries(testStageDir);
@@ -151,7 +151,7 @@ class SQLiteStoreUnloggedAPITest {
         assertEquals("9999", rawScalar(testDbPath, "SELECT score FROM unlogged_players WHERE id=1"));
 
         // -------------------------------------------------------------------------
-        // Phase 5: updateBatchUnlogged â€” logged inserts then batch unlogged update.
+        // Phase 5: updateBatchUnlogged logged inserts then batch unlogged update.
         // -------------------------------------------------------------------------
         SQLiteStore.initialize(testDbPath, testConfigPath, "unloggedtest");
         try (SyncLiteStore store = SQLiteStore.open(testDbPath)) {
@@ -178,7 +178,7 @@ class SQLiteStoreUnloggedAPITest {
         assertEquals("200", rawScalar(testDbPath, "SELECT score FROM unlogged_players WHERE id=31"));
 
         // -------------------------------------------------------------------------
-        // Phase 6: deleteUnlogged â€” delete one row without a commandlog entry.
+        // Phase 6: deleteUnlogged delete one row without a commandlog entry.
         // -------------------------------------------------------------------------
         SQLiteStore.initialize(testDbPath, testConfigPath, "unloggedtest");
         countBefore = countAllCommandlogEntries(testStageDir);
@@ -193,7 +193,7 @@ class SQLiteStoreUnloggedAPITest {
         assertEquals(8, rawRowCount(testDbPath, "unlogged_players")); // 9 rows - 1 deleted
 
         // -------------------------------------------------------------------------
-        // Phase 7: deleteBatchUnlogged â€” logged inserts then batch unlogged delete.
+        // Phase 7: deleteBatchUnlogged logged inserts then batch unlogged delete.
         // -------------------------------------------------------------------------
         SQLiteStore.initialize(testDbPath, testConfigPath, "unloggedtest");
         try (SyncLiteStore store = SQLiteStore.open(testDbPath)) {
@@ -218,7 +218,7 @@ class SQLiteStoreUnloggedAPITest {
         assertEquals(8, rawRowCount(testDbPath, "unlogged_players"));
 
         // -------------------------------------------------------------------------
-        // Phase 8: setTableLogging(false) â€” DML on disabled table skips commandlog.
+        // Phase 8: setTableLogging(false) DML on disabled table skips commandlog.
         // -------------------------------------------------------------------------
         SQLiteStore.initialize(testDbPath, testConfigPath, "unloggedtest");
         try (SyncLiteStore store = SQLiteStore.open(testDbPath)) {

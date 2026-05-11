@@ -158,7 +158,7 @@ public class SyncLiteStoreConnection extends JDBC4Connection {
     }
 
     PreparedStatement prepareUnloggedStatement(String sql) throws SQLException {
-        return super.prepareStatement(sql, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY, ResultSet.CLOSE_CURSORS_AT_COMMIT);
+        return new SyncLiteUnloggedPreparedStatement(this, sql);
     }
 
     @Override
