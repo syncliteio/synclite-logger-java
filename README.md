@@ -273,6 +273,8 @@ The compiled JAR is placed under `logger/target/`.
 - Community: https://github.com/syncliteio/SyncLite/issues
 - Website: https://www.synclite.io
 
+- Log format details: see the **SyncLite Log Format** section in the platform documentation: https://github.com/syncliteio/SyncLite/blob/main/DOCUMENTATION.md#synclite-log-format
+
 ---
 
 ← Back to the [SyncLite Platform README](https://github.com/syncliteio/SyncLite/blob/main/README.md)
