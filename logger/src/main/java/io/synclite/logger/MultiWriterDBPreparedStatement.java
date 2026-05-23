@@ -123,6 +123,12 @@ public class MultiWriterDBPreparedStatement extends SyncLitePreparedStatement {
         for (int pos=0; pos < paramCount; pos++) {
             args[pos] = batch[batchPos + pos];
         }
-        getCommandStager().log(commitId, sql, args);
+		if (batchQueryCount == 0) {
+			getCommandStager().log(commitId, this.sql, args);
+		} else if (batchQueryCount == 1) {
+			getCommandStager().log(commitId, this.sql, args);
+		} else {
+			getCommandStager().log(commitId, null, args);
+		}
     }
 }

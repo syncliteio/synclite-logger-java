@@ -88,6 +88,7 @@ public class SyncLitePreparedStatement extends JDBC4PreparedStatement {
     @Override
     public final int[] executeBatch() throws SQLException {
         int[] result = pStmtExecuteBatch();
+        batchQueryCount = 0;
         processCommit();
         return result;
     }

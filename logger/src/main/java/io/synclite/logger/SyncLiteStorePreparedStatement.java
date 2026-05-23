@@ -118,6 +118,7 @@ public class SyncLiteStorePreparedStatement extends JDBC4PreparedStatement {
         int cachedBatchQueryCount = batchQueryCount;
         this.processedRowCount += cachedBatchQueryCount;
         int[] result = pStmtExecuteBatch();
+        batchQueryCount = 0;
         if (cachedBatchQueryCount == 0) {
             log();
         }
