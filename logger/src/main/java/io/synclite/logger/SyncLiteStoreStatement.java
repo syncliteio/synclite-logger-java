@@ -28,7 +28,7 @@ public class SyncLiteStoreStatement extends JDBC4Statement {
 
     protected SyncLiteStoreStatement(SQLiteConnection conn) throws SQLException {
         super(conn);
-        this.sqlLogger = EventLogger.findInstance(getConn().getPath());
+        this.sqlLogger = SQLLogger.findInstance(getConn().getPath());
     }
 
     protected SyncLiteStoreConnection getConn() {

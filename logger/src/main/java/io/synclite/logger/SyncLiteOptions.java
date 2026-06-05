@@ -789,11 +789,15 @@ public class SyncLiteOptions {
 			}
 
 			Integer destIndex=1;
-			if (properties.containsKey("destination-type")) {
+			// Backward-compat: `destination-type[-N]` is the legacy key.
+			// The canonical logger key is now `device-stage-type[-N]`,
+			// matching the Java consolidator's stage key.
+			normalizeStageTypeAliases(properties);
+			if (properties.containsKey("device-stage-type")) {
 				parseDestination(properties, destIndex, "", options);
-			} else if (properties.containsKey("destination-type-1")) {
+			} else if (properties.containsKey("device-stage-type-1")) {
 				while(true) {
-					if (properties.containsKey("destination-type-" + destIndex)) {
+					if (properties.containsKey("device-stage-type-" + destIndex)) {
 						parseDestination(properties, destIndex, "-" + destIndex, options);
 					} else {
 						break;
@@ -802,7 +806,7 @@ public class SyncLiteOptions {
 				}
 			} else {
 				//If no destinations are specified then assume it to be FS with local-data-stage-directory same as that of device base
-				properties.put("destination-type", DestinationType.FS.toString());
+				properties.put("device-stage-type", DestinationType.FS.toString());
 				parseDestination(properties, destIndex, "", options);
 			}
 		} catch (SQLException e) {
@@ -813,18 +817,36 @@ public class SyncLiteOptions {
 		}
 	}
 
+	private static void normalizeStageTypeAliases(HashMap<String, String> properties) {
+		if (!properties.containsKey("device-stage-type") && properties.containsKey("destination-type")) {
+			properties.put("device-stage-type", properties.get("destination-type"));
+		}
+		int i = 1;
+		while (true) {
+			String legacy = "destination-type-" + i;
+			String canonical = "device-stage-type-" + i;
+			if (!properties.containsKey(canonical) && properties.containsKey(legacy)) {
+				properties.put(canonical, properties.get(legacy));
+			}
+			if (!properties.containsKey(legacy) && !properties.containsKey(canonical)) {
+				break;
+			}
+			++i;
+		}
+	}
+
 	private static void parseDestination(HashMap<String, String> properties, Integer destIndex, String propSuffix, SyncLiteOptions options) throws SQLException {
-		if (properties.containsKey("destination-type" + propSuffix)) {
+		if (properties.containsKey("device-stage-type" + propSuffix)) {
 			//Single destination is supplied. Parse all values
-			String optVal = properties.get("destination-type" + propSuffix);
+			String optVal = properties.get("device-stage-type" + propSuffix);
 			DestinationType destType;
 			try {
 				destType = DestinationType.valueOf(optVal);
 			} catch (IllegalArgumentException e) {
-				throw new SQLException("SyncLite : Invalid value " + optVal + " specified for destination-type" + propSuffix);
+				throw new SQLException("SyncLite : Invalid value " + optVal + " specified for device-stage-type" + propSuffix);
 			}
 			if (destType == null) {
-				throw new SQLException("SyncLite : Invalid value " + optVal + " specified for destination-type" + propSuffix);
+				throw new SQLException("SyncLite : Invalid value " + optVal + " specified for device-stage-type" + propSuffix);
 			} else {
 				options.setDestinationType(destIndex, destType);
 			}

@@ -125,22 +125,31 @@ public final class SyncTxnLogger extends TxnLogger {
 
 	@Override
 	protected void logCommitAndFlush(long commitId) throws SQLException {
-		appendLogRecord(new CommandLogRecord(commitId, "COMMIT", null));
-		flush(commitId);
-        //Reset current txn log count to 0 to enable log switching on commit boundary
-        this.currentTxnLogCount = 0;
-        this.currentBatchLogCount = 0;
+		synchronized (txnLock) {
+			txnInProgress = true;
+			appendLogRecord(new CommandLogRecord(commitId, "COMMIT", null));
+			executeLogBatch();
+			commitLogSegment();
+			//Reset current txn log count to 0 to enable log switching on commit boundary
+			this.currentTxnLogCount = 0;
+			this.currentBatchLogCount = 0;
+			txnInProgress = false;
+		}
 		checkups();
 	}
 
 	@Override
 	protected void logRollbackAndFlush(long commitId) throws SQLException {
-		executeLogBatch();
-		undoLogsForCommit(commitId);
-		commitLogSegment();
 		synchronized (txnLock) {
+			txnInProgress = true;
+			executeLogBatch();
+			undoLogsForCommit(commitId);
+			commitLogSegment();
+			this.currentTxnLogCount = 0;
+			this.currentBatchLogCount = 0;
 			txnInProgress = false;
 		}
+		checkups();
 	}
 
 	@Override

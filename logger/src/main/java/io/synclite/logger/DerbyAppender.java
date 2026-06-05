@@ -99,8 +99,8 @@ public final class DerbyAppender extends SyncLite {
 
 	@Override
 	protected void getOrCreateLoggerInstace(Path dbPath, SyncLiteOptions options, Logger tracer) throws SQLException {
-		//Use SyncEventLogger for this device.
-		SyncEventLogger.getInstance(dbPath, options, tracer);
+		//Use SyncTxnLogger for this device.
+		SyncTxnLogger.getInstance(dbPath, options, tracer);
 	}
 }
 

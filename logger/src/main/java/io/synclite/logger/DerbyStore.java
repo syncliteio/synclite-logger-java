@@ -99,7 +99,7 @@ public final class DerbyStore extends SyncLite {
 
     @Override
     protected void getOrCreateLoggerInstace(Path dbPath, SyncLiteOptions options, Logger tracer) throws SQLException {
-        SyncEventLogger.getInstance(dbPath, options, tracer);
+        SyncTxnLogger.getInstance(dbPath, options, tracer);
     }
 
     /** SQL type used for String-valued columns auto-added by this backend. */

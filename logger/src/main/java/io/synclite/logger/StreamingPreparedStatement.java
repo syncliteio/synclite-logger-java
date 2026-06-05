@@ -26,7 +26,7 @@ public class StreamingPreparedStatement extends DBLoggerPreparedStatement {
     	String strippedSql = sql.strip();
     	String tokens[] = strippedSql.split("\\s+");
     	if (tokens[0].equalsIgnoreCase("INSERT") && tokens[1].equalsIgnoreCase("INTO")) {
-    		SyncLiteUtils.validateInsertForDBLoggerAndAppender(strippedSql, conn, EventLogger.findInstance(getConn().getPath()));
+			SyncLiteUtils.validateInsertForDBLoggerAndAppender(strippedSql, conn, SQLLogger.findInstance(getConn().getPath()));
     	} else if ((tokens[0].equalsIgnoreCase("CREATE") || tokens[0].equalsIgnoreCase("DROP") || tokens[0].equalsIgnoreCase("ALTER")) &&
     			(tokens[1].equalsIgnoreCase("TABLE"))
     			) {

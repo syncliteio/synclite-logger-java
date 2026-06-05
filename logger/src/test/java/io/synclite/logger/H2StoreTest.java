@@ -42,10 +42,10 @@ class H2StoreTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        Path testHome = Path.of(System.getProperty("user.home")).resolve("synclite").resolve("test");
-        testDbPath = testHome.resolve("db").resolve("H2StoreTest").resolve("test-h2-store.db");
+        Path testHome = Path.of(System.getProperty("user.home")).resolve("synclite").resolve("tests");
+        testDbPath = testHome.resolve("db").resolve("javalogger").resolve("H2StoreTest").resolve("test-h2-store.db");
         testStageDir = testHome.resolve("stageDir");
-        testConfigPath = testDbPath.getParent().resolve("synclite_logger.conf");
+        testConfigPath = testDbPath.getParent().resolve("synclite.conf");
 
         if (Files.exists(testDbPath.getParent())) {
             deleteRecursively(testDbPath.getParent());
@@ -61,7 +61,7 @@ class H2StoreTest {
         Files.createDirectories(testStageDir);
 
         String configContent = "local-data-stage-directory = " + testStageDir + "\n" +
-                              "destination-type = FS\n";
+                              "device-stage-type = FS\n";
         Files.writeString(testConfigPath, configContent);
 
         Class.forName("io.synclite.logger.H2Store");

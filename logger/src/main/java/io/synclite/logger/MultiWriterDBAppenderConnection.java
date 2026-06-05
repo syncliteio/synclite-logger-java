@@ -32,7 +32,7 @@ public abstract class MultiWriterDBAppenderConnection extends SyncLiteAppenderCo
 
 	public MultiWriterDBAppenderConnection(String url, String fileName, Properties props) throws SQLException {
 		super("jdbc:sqlite:" + SyncLite.getSQLiteSchemaFilePath(Path.of(fileName)).toString(), SyncLite.getSQLiteSchemaFilePath(Path.of(fileName)).toString() , props);
-		this.cmdStager = new EventSQLStager(Path.of(fileName), this.sqlLogger.options, commitId);
+		this.cmdStager = new TxnSQLStager(Path.of(fileName), this.sqlLogger.options, commitId);
 		this.dbProcessor = nativeDBProcessor();
 	}
 
@@ -69,9 +69,7 @@ public abstract class MultiWriterDBAppenderConnection extends SyncLiteAppenderCo
 				//logger will not switch the log file.
 				//
 				cmdStager.publishTxn(this.sqlLogger.getCurrentLogSegmentSequenceNumber(), this.commitId);
-
-				//Commit log
-				this.sqlLogger.commit(commitId);
+				this.sqlLogger.logCommitAndFlush(commitId);
 
 				//Record commit of this transaction in user db file.    		
 				recordCommit();
@@ -86,7 +84,7 @@ public abstract class MultiWriterDBAppenderConnection extends SyncLiteAppenderCo
 			this.commitId = this.sqlLogger.getNextCommitID();
 
 			//Create a new command stager object.
-			this.cmdStager = new EventSQLStager(this.path, this.sqlLogger.options, commitId);
+			this.cmdStager = new TxnSQLStager(this.path, this.sqlLogger.options, commitId);
 		}
 	}
 
@@ -95,7 +93,7 @@ public abstract class MultiWriterDBAppenderConnection extends SyncLiteAppenderCo
 		synchronized(commitLock) {
 			//Delete the txnFile.    	
 			this.cmdStager.rollback();
-			this.sqlLogger.rollback(commitId);
+			this.sqlLogger.logRollbackAndFlush(commitId);
 			connRollback();
 			this.commitId = this.sqlLogger.getNextCommitID();
 			this.cmdStager = new TxnSQLStager(this.path, this.sqlLogger.options, commitId);

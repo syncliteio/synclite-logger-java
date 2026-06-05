@@ -25,10 +25,10 @@ class HyperSQLStoreAPITest {
 
     @BeforeEach
     void setUp() throws Exception {
-        Path testHome = Path.of(System.getProperty("user.home")).resolve("synclite").resolve("test");
-        testDbPath = testHome.resolve("db").resolve("HyperSQLStoreAPITest").resolve("test.db");
+        Path testHome = Path.of(System.getProperty("user.home")).resolve("synclite").resolve("tests");
+        testDbPath = testHome.resolve("db").resolve("javalogger").resolve("HyperSQLStoreAPITest").resolve("test.db");
         testStageDir = testHome.resolve("stageDir");
-        testConfigPath = testDbPath.getParent().resolve("synclite_logger.conf");
+        testConfigPath = testDbPath.getParent().resolve("synclite.conf");
 
         if (Files.exists(testDbPath.getParent())) deleteRecursively(testDbPath.getParent());
         if (Files.exists(testStageDir)) {
@@ -40,7 +40,7 @@ class HyperSQLStoreAPITest {
         Files.createDirectories(testDbPath.getParent());
         Files.createDirectories(testStageDir);
         Files.writeString(testConfigPath,
-                "local-data-stage-directory = " + testStageDir + "\ndestination-type = FS\n");
+                "local-data-stage-directory = " + testStageDir + "\ndevice-stage-type = FS\n");
 
         Class.forName("io.synclite.logger.HyperSQLStore");
         HyperSQLStore.initialize(testDbPath, testConfigPath, "hypersqlstoreapi");

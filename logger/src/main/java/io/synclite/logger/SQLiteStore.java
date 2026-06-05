@@ -89,7 +89,7 @@ public class SQLiteStore extends SyncLite {
 
     @Override
     protected void getOrCreateLoggerInstace(Path dbPath, SyncLiteOptions options, Logger tracer) throws SQLException {
-        SyncEventLogger.getInstance(dbPath, options, tracer);
+        SyncTxnLogger.getInstance(dbPath, options, tracer);
     }
 
     @Override

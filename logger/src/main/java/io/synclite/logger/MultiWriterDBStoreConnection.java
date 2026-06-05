@@ -34,7 +34,7 @@ public abstract class MultiWriterDBStoreConnection extends SyncLiteStoreConnecti
     public MultiWriterDBStoreConnection(String url, String fileName, Properties props) throws SQLException {
         super("jdbc:sqlite:" + SyncLite.getSQLiteSchemaFilePath(Path.of(fileName)).toString(),
                 SyncLite.getSQLiteSchemaFilePath(Path.of(fileName)).toString(), props);
-        this.cmdStager = new EventSQLStager(Path.of(fileName), this.sqlLogger.options, commitId);
+        this.cmdStager = new TxnSQLStager(Path.of(fileName), this.sqlLogger.options, commitId);
         this.dbProcessor = nativeDBProcessor();
     }
 
@@ -60,14 +60,14 @@ public abstract class MultiWriterDBStoreConnection extends SyncLiteStoreConnecti
                 this.commitId = this.sqlLogger.getNextCommitID();
                 this.sqlLogger.log(commitId, "REPLAY_TXN", null);
                 cmdStager.publishTxn(this.sqlLogger.getCurrentLogSegmentSequenceNumber(), this.commitId);
-                this.sqlLogger.commit(commitId);
+                this.sqlLogger.logCommitAndFlush(commitId);
                 recordCommit();
             } else {
                 cmdStager.cleanup();
             }
             connCommit();
             this.commitId = this.sqlLogger.getNextCommitID();
-            this.cmdStager = new EventSQLStager(this.path, this.sqlLogger.options, commitId);
+            this.cmdStager = new TxnSQLStager(this.path, this.sqlLogger.options, commitId);
         }
     }
 
@@ -75,7 +75,7 @@ public abstract class MultiWriterDBStoreConnection extends SyncLiteStoreConnecti
     public final void rollback() throws SQLException {
         synchronized (commitLock) {
             this.cmdStager.rollback();
-            this.sqlLogger.rollback(commitId);
+            this.sqlLogger.logRollbackAndFlush(commitId);
             connRollback();
             this.commitId = this.sqlLogger.getNextCommitID();
             this.cmdStager = new TxnSQLStager(this.path, this.sqlLogger.options, commitId);

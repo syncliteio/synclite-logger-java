@@ -39,10 +39,10 @@ class SQLiteStoreUnloggedAPITest {
 
     @Test
     void testAllUnloggedAPIs() throws Exception {
-        Path testHome       = Path.of(System.getProperty("user.home")).resolve("synclite").resolve("test");
-        Path testDbPath     = testHome.resolve("db").resolve("SQLiteStoreUnloggedAPITest").resolve("test.db");
+        Path testHome       = Path.of(System.getProperty("user.home")).resolve("synclite").resolve("tests");
+        Path testDbPath     = testHome.resolve("db").resolve("javalogger").resolve("SQLiteStoreUnloggedAPITest").resolve("test.db");
         Path testStageDir   = testHome.resolve("stageDir");
-        Path testConfigPath = testDbPath.getParent().resolve("synclite_logger.conf");
+        Path testConfigPath = testDbPath.getParent().resolve("synclite.conf");
 
         // Clean up from any previous run.
         for (int attempt = 0; attempt < 20 && Files.exists(testDbPath.getParent()); attempt++) {
@@ -62,7 +62,7 @@ class SQLiteStoreUnloggedAPITest {
         Files.createDirectories(testDbPath.getParent());
         Files.createDirectories(testStageDir);
         Files.writeString(testConfigPath,
-                "local-data-stage-directory = " + testStageDir + "\ndestination-type = FS\n");
+                "local-data-stage-directory = " + testStageDir + "\ndevice-stage-type = FS\n");
 
         Class.forName("io.synclite.logger.SQLiteStore");
 
@@ -297,7 +297,7 @@ class SQLiteStoreUnloggedAPITest {
                      ResultSet r = s.executeQuery("SELECT COUNT(*) FROM commandlog")) {
                     if (r.next()) total += r.getLong(1);
                 } catch (SQLException ignored) {
-                    // Not-yet-initialized or malformed segment â€” skip.
+                    // Not-yet-initialized or malformed segment Ã¢– skip.
                 }
             }
         }

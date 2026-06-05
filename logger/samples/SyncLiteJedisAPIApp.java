@@ -35,7 +35,7 @@ public class SyncLiteJedisAPIApp {
         Path dbPath = Path.of("sample_jedis_store.db");
 
         // Managed mode: Jedis handles SQLiteStore initialize/open/close internally.
-        try (Jedis jedis = Jedis.builder(dbPath, Path.of("synclite_logger.conf"), "jedis-sample")
+        try (Jedis jedis = Jedis.builder(dbPath, Path.of("synclite.conf"), "jedis-sample")
                 .host("localhost")
                 .port(6379)
                 .build()) {

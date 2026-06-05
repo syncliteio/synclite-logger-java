@@ -42,7 +42,7 @@ public class SyncLiteStreamAPIApp {
     public static void main(String[] args) throws ClassNotFoundException, SQLException {
         Class.forName("io.synclite.logger.Streaming");
         Path dbPath = Path.of("sample_stream_api.db");
-        Streaming.initialize(dbPath, Path.of("synclite_logger.conf"));
+        Streaming.initialize(dbPath, Path.of("synclite.conf"));
 
         try (SyncLiteStream stream = SyncLiteStream.open(dbPath)) {
             // 1) CREATE TABLE via Stream API

@@ -91,6 +91,7 @@ public class LogCleaner {
 			if (cleaned) {
 				metadataMgr.updateProperty("cleaned_log_segment_sequence_number", cleanLogsUpto);
 				this.cleanedLogSegmentSequenceNumber.set(cleanLogsUpto);
+				tracer.info("Log segments cleaned : cleanedUpto=" + cleanLogsUpto);
 			}
 		} catch (Exception e) {
 			tracer.error("SyncLite LogCleaner failed cleaning up logs with exception : ", e);			
@@ -119,6 +120,7 @@ public class LogCleaner {
 			if (cleaned) {
 				metadataMgr.updateProperty("cleaned_data_file_sequence_number", cleanDataFilesUpto);
 				this.cleanedDataFileSequenceNumber.set(cleanDataFilesUpto);
+				tracer.info("Data files cleaned : cleanedUpto=" + cleanDataFilesUpto);
 			}
 		} catch (Exception e) {
 			tracer.error("SyncLite LogCleaner failed cleaning up data files with exception : ", e);			

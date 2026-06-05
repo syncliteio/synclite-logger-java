@@ -33,7 +33,7 @@ public class SyncLiteStorePreparedStatement extends JDBC4PreparedStatement {
         super(conn, sql);
         String strippedSql = sql.strip();
         String tokens[] = strippedSql.split("\\s+");
-        SQLLogger logger = EventLogger.findInstance(getConn().getPath());
+        SQLLogger logger = SQLLogger.findInstance(getConn().getPath());
         if (tokens[0].equalsIgnoreCase("INSERT") && tokens[1].equalsIgnoreCase("INTO")) {
             SyncLiteUtils.validateInsertForDBLoggerAndAppender(strippedSql, conn, logger);
         } else if ((tokens[0].equalsIgnoreCase("CREATE") || tokens[0].equalsIgnoreCase("DROP") || tokens[0].equalsIgnoreCase("ALTER"))
@@ -59,7 +59,7 @@ public class SyncLiteStorePreparedStatement extends JDBC4PreparedStatement {
     // External callers in other packages cannot reach this constructor.
     SyncLiteStorePreparedStatement(SQLiteConnection conn, String sql, boolean trusted) throws SQLException {
         super(conn, sql);
-        this.sqlLogger = EventLogger.findInstance(getConn().getPath());
+        this.sqlLogger = SQLLogger.findInstance(getConn().getPath());
         this.tableNameInDDL = SyncLiteUtils.getTableNameFromDDL(sql);
     }
 
