@@ -42,10 +42,10 @@ class DuckDBAppenderTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        Path testHome = Path.of(System.getProperty("user.home")).resolve("synclite").resolve("test");
-        testDbPath = testHome.resolve("db").resolve("DuckDBAppenderTest").resolve("test-duckdb-appender.db");
+        Path testHome = Path.of(System.getProperty("user.home")).resolve("synclite").resolve("tests");
+        testDbPath = testHome.resolve("db").resolve("javalogger").resolve("DuckDBAppenderTest").resolve("test-duckdb-appender.db");
         testStageDir = testHome.resolve("stageDir");
-        testConfigPath = testDbPath.getParent().resolve("synclite_logger.conf");
+        testConfigPath = testDbPath.getParent().resolve("synclite.conf");
 
         if (Files.exists(testDbPath.getParent())) {
             deleteRecursively(testDbPath.getParent());
@@ -61,7 +61,7 @@ class DuckDBAppenderTest {
         Files.createDirectories(testStageDir);
 
         String configContent = "local-data-stage-directory = " + testStageDir + "\n" +
-                              "destination-type = FS\n";
+                              "device-stage-type = FS\n";
         Files.writeString(testConfigPath, configContent);
 
         Class.forName("io.synclite.logger.DuckDBAppender");

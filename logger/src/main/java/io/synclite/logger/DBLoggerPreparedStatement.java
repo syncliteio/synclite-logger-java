@@ -32,7 +32,7 @@ public class DBLoggerPreparedStatement extends JDBC4PreparedStatement {
 		if (subSqls.size() > 1) {
 			throw new SQLException("Unsupported SQL: SyncLite DBLogger supports a single SQL statement as part of a PreparedStatement, multiple specified  : " + sql);			
 		}
-		SQLLogger logger = EventLogger.findInstance(getConn().getPath());
+		SQLLogger logger = SQLLogger.findInstance(getConn().getPath());
 		String stippedSql = subSqls.get(0).strip();
 		String[] tokens = stippedSql.split("\\s+");		
 		if (tokens[0].equalsIgnoreCase("INSERT") && tokens[1].equalsIgnoreCase("INTO")) {

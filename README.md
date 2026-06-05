@@ -4,20 +4,22 @@
 
 ## What is SyncLite Logger?
 
-**SyncLite Logger** is an embeddable Java library (JDBC driver) that makes any Java or Python application **sync-ready** with minimal code changes. It wraps popular embedded databases — SQLite, DuckDB, Apache Derby, H2, and HyperSQL — and transparently captures every SQL transaction into compact, binary log files. These log files are shipped in real time to a configured staging storage (local directory, SFTP, Amazon S3, MinIO, Apache Kafka, OneDrive, Google Drive, NFS, and more), where [SyncLite Consolidator](https://github.com/syncliteio/synclite-consolidator) continuously ingests and consolidates them into the destination database, data warehouse, or data lake of your choice.
+**SyncLite Logger** is an embeddable Java library (JDBC driver) that makes Java applications **sync-ready** with minimal code changes. It wraps popular embedded databases — SQLite, DuckDB, Apache Derby, H2, and HyperSQL — and transparently captures every SQL transaction into compact, binary log files. These log files are shipped in real time to a configured staging storage (local directory, SFTP, Amazon S3, MinIO, Apache Kafka, OneDrive, Google Drive, NFS, and more), where [SyncLite Consolidator](https://github.com/syncliteio/synclite-consolidator) continuously ingests and consolidates them into the destination database, data warehouse, or data lake of your choice.
+
+Python and C++ consumers should use the Rust-based [SyncLite Runtime](https://github.com/syncliteio/SyncLite/tree/main/synclite-logger-rust), which packages the full runtime (logger + consolidator) and exposes language bindings.
 
 The result: edge, desktop, or mobile apps that work fully offline with a local embedded database and automatically replicate all changes to the cloud — without you writing a single line of replication code.
 
 ```
 Your App  +  SyncLite Logger  +  Embedded DB
      │
-     ▼  (SQL log files)
+      v  (SQL log files)
   Staging Storage  (local / SFTP / S3 / MinIO / Kafka / OneDrive / …)
      │
-     ▼
+      v
   SyncLite Consolidator
      │
-     ▼
+      v
   Destination DB / Data Warehouse / Data Lake
 ```
 
@@ -44,18 +46,18 @@ Note: internal device types such as Appender and DBLogger remain implementation 
 </dependency>
 ```
 
-Or copy `synclite-logger-<version>.jar` from the platform release into your project classpath.
+Or copy `synclite-<version>.jar` from the platform release into your project classpath.
 
-### 2. Configure `synclite_logger.conf`
+### 2. Configure `synclite.conf`
 
-A full sample config file is provided at `logger/src/main/resources/synclite_logger.conf`. At minimum, set:
+A full sample config file is provided at `logger/src/main/resources/synclite.conf`. At minimum, set:
 
 ```properties
 # Where to write the local sync logs (staging directory)
 local-data-stage-directory=<path/to/stage>
 
 # Where the final destination is (can also be configured in Consolidator UI)
-destination-type=SQLITE
+device-stage-type=SQLITE
 ```
 
 ### 3. Initialize and use in Java
@@ -69,7 +71,7 @@ public class MyEdgeApp {
     public static void main(String[] args) throws Exception {
         Path dbDir = Path.of(System.getProperty("user.home"), "synclite", "db");
         Path dbPath = dbDir.resolve("myapp.db");
-        Path conf   = dbDir.resolve("synclite_logger.conf");
+        Path conf   = dbDir.resolve("synclite.conf");
 
         // Initialize SyncLite Logger with SQLite
         Class.forName("io.synclite.logger.SQLite");
@@ -116,7 +118,7 @@ import io.synclite.logger.SyncLiteStore;
 
 Class.forName("io.synclite.logger.SQLiteStore");
 Path dbPath = Path.of("mystore.db");
-SQLiteStore.initialize(dbPath, Path.of("synclite_logger.conf"));
+SQLiteStore.initialize(dbPath, Path.of("synclite.conf"));
 
 try (SyncLiteStore store = SQLiteStore.open(dbPath)) {
     // CREATE TABLE
@@ -155,7 +157,7 @@ import io.synclite.logger.SyncLiteStream;
 
 Class.forName("io.synclite.logger.Streaming");
 Path dbPath = Path.of("events.db");
-Streaming.initialize(dbPath, Path.of("synclite_logger.conf"));
+Streaming.initialize(dbPath, Path.of("synclite.conf"));
 
 try (SyncLiteStream stream = SyncLiteStream.open(dbPath)) {
     stream.createTable("events", new LinkedHashMap<>(Map.of(
@@ -189,7 +191,7 @@ import io.synclite.logger.Jedis;
 Path dbPath = Path.of("cache.db");
 
 // Managed mode — Jedis handles SQLiteStore initialise / open / close
-try (Jedis jedis = Jedis.builder(dbPath, Path.of("synclite_logger.conf"), "jedis-device")
+try (Jedis jedis = Jedis.builder(dbPath, Path.of("synclite.conf"), "jedis-device")
         .host("localhost").port(6379).build()) {
 
     // Strings
@@ -220,11 +222,11 @@ try (Jedis jedis = Jedis.builder(dbPath, Path.of("synclite_logger.conf"), "jedis
 }
 ```
 
-The `Jedis.builder(SyncLiteStore)` overload is available when the application manages the store lifecycle externally. See `logger/samples/java/SyncLiteJedisAPIApp.java` for the full sample.
+The `Jedis.builder(SyncLiteStore)` overload is available when the application manages the store lifecycle externally. See `logger/samples/SyncLiteJedisAPIApp.java` for the full sample.
 
 ## Python Support
 
-SyncLite Logger also supports Python via JDBC bridge. See `logger/samples/python/` for ready-to-run examples.
+SyncLite Logger is Java-only. Python users consume SyncLite through the Rust runtime + PyO3 bindings — see [`synclite-code-samples/synclite-logger/python/`](../synclite-code-samples/synclite-logger/python/).
 
 ## Code Samples
 
@@ -232,8 +234,8 @@ All sample applications live under `logger/samples/`:
 
 ```
 logger/samples/
-├── java/          # Java sample apps (SQL, streaming, appender)
-└── python/        # Python sample apps
+├─ java/          # Java sample apps (SQL, streaming, appender)
+└─ python/        # Python sample apps
 ```
 
 ## Staging Storages Supported

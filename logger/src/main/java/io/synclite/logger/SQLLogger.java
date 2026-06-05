@@ -110,6 +110,7 @@ abstract class SQLLogger extends Thread {
 			initializeLogShipper();
 			initializeCommandHandlers();
 			initializeBackupAgent();
+			tracer.info("Device opened : dbPath=" + dbPath + " type=" + options.getDeviceType() + " destinations=" + options.getNumDestinations());
 		} catch (SQLException e) {
 			if (metadataMgr != null) {
 				metadataMgr.close();
@@ -224,17 +225,17 @@ abstract class SQLLogger extends Thread {
 	}
 
 	private String getWriteArchiveName() {
-		if (options.getDeviceName().equals("")) {
+		if ((this.deviceName == null) || this.deviceName.equals("")) {
 			return getWriteArchiveNamePrefix() + this.uuid.toString();
 		}
-		return getWriteArchiveNamePrefix() + options.getDeviceName() + "-" + this.uuid.toString();
+		return getWriteArchiveNamePrefix() + this.deviceName + "-" + this.uuid.toString();
 	}
 
 	private String getReadArchiveName() {
-		if (options.getDeviceName().equals("")) {
+		if ((this.deviceName == null) || this.deviceName.equals("")) {
 			return getReadArchiveNamePrefix() + this.uuid.toString();
 		}
-		return getReadArchiveNamePrefix() + options.getDeviceName() + "-" + this.uuid.toString();
+		return getReadArchiveNamePrefix() + this.deviceName + "-" + this.uuid.toString();
 	}
 
 	private final void doSwitchLogSegment() throws SQLException {
@@ -257,6 +258,7 @@ abstract class SQLLogger extends Thread {
 					stmt.execute(updateMetadataTableSql);
 				}
 				logTableConn.commit();
+				tracer.info("Log segment closed : seqNum=" + this.logSegmentSequenceNumber.get() + " path=" + this.logPath);
 
 				if (additionalPrepStmts != null) {
 					for (PreparedStatement pstmt : additionalPrepStmts) {
@@ -435,6 +437,7 @@ abstract class SQLLogger extends Thread {
 		if (this.allowsConcurrentWrites) {
 			SQLStager.removeOrphanCmdFiles(dbPath);
 		}
+		tracer.info("Restart recovery completed : dbPath=" + dbPath + " commitID=" + this.restartMasterCommitID + " logSegmentSeq=" + this.logSegmentSequenceNumber.get() + " operationID=" + this.currentOperationId);
 	}
 
    long getNextCommitID() {
@@ -486,7 +489,8 @@ abstract class SQLLogger extends Thread {
 		String insertLogTableSql = insertLogTableSqlTemplate.replace("$1", argList);
 		insertLogTableSql = insertLogTableSql.replace("$2", fillerList);
 		insertLogTablePstmt = logTableConn.prepareStatement(insertLogTableSql);
-		lastLogSegmentCreateTime = System.currentTimeMillis();		
+		lastLogSegmentCreateTime = System.currentTimeMillis();
+		tracer.info("Log segment created : seqNum=" + seqNum + " path=" + logPath);
 	}
 
 	private final void reloadCurrentLogSegment() throws SQLException {

@@ -149,13 +149,13 @@ public class Main {
 		syncLiteHome = userHome.resolve("synclite");
 		syncLiteDB = syncLiteHome.resolve("job1").resolve("db");
 		syncLiteStage = syncLiteHome.resolve("job1").resolve("stageDir");
-		syncLiteLoggerConfig = syncLiteDB.resolve("synclite_logger.conf"); 
+		syncLiteLoggerConfig = syncLiteDB.resolve("synclite.conf"); 
 		Files.createDirectories(syncLiteDB);
 		Files.createDirectories(syncLiteStage);
 		if (!Files.exists(syncLiteLoggerConfig)) {
 			StringBuilder sb = new StringBuilder();
 			sb.append("local-data-stage-directory = ").append(syncLiteStage).append("\n");
-			sb.append("destination-type = ").append("FS").append("\n");
+			sb.append("device-stage-type = ").append("FS").append("\n");
 			Files.writeString(syncLiteLoggerConfig, sb.toString());
 		}
 	}
@@ -804,8 +804,8 @@ public class Main {
 		//options.setLocalDataDirectory(2, Path.of("E:\\database\\dataDir1"));
 
 		//SQLite.initialize(dbPath, options);
-		//SQLite.initialize(dbPath, Path.of("C:\\Users\\xyz\\synclite\\demo\\db\\synclite_logger.conf"));
-		//SQLite.initialize(dbPath, Path.of("C:\\Users\\xyz\\synclite\\demo\\db\\synclite_logger.conf"), "1");
+		//SQLite.initialize(dbPath, Path.of("C:\\Users\\xyz\\synclite\\demo\\db\\synclite.conf"));
+		//SQLite.initialize(dbPath, Path.of("C:\\Users\\xyz\\synclite\\demo\\db\\synclite.conf"), "1");
 
 		Path dbPath = syncLiteDB.resolve("testSQLiteBasic.db");
 		Path config = syncLiteLoggerConfig;	
@@ -869,8 +869,8 @@ public class Main {
 		//options.setLocalDataDirectory(2, Path.of("E:\\database\\dataDir1"));
 
 		//SQLite.initialize(dbPath, options);
-		//SQLite.initialize(dbPath, Path.of("C:\\Users\\xyz\\synclite\\demo\\db\\synclite_logger.conf"));
-		//SQLite.initialize(dbPath, Path.of("C:\\Users\\xyz\\synclite\\demo\\db\\synclite_logger.conf"), "1");
+		//SQLite.initialize(dbPath, Path.of("C:\\Users\\xyz\\synclite\\demo\\db\\synclite.conf"));
+		//SQLite.initialize(dbPath, Path.of("C:\\Users\\xyz\\synclite\\demo\\db\\synclite.conf"), "1");
 
 		Path dbPath = syncLiteDB.resolve("testSQLiteAppenderBasic.db");
 		Path config = syncLiteLoggerConfig;	
@@ -942,8 +942,8 @@ public class Main {
 		//options.setLocalDataDirectory(2, Path.of("E:\\database\\dataDir1"));
 
 		//SQLite.initialize(dbPath, options);
-		//SQLite.initialize(dbPath, Path.of("C:\\Users\\xyz\\synclite\\demo\\db\\synclite_logger.conf"));
-		//SQLite.initialize(dbPath, Path.of("C:\\Users\\xyz\\synclite\\demo\\db\\synclite_logger.conf"), "1");
+		//SQLite.initialize(dbPath, Path.of("C:\\Users\\xyz\\synclite\\demo\\db\\synclite.conf"));
+		//SQLite.initialize(dbPath, Path.of("C:\\Users\\xyz\\synclite\\demo\\db\\synclite.conf"), "1");
 
 		Path dbPath = syncLiteDB.resolve("testDuckDBBasic.db");
 		Path config = syncLiteLoggerConfig;	
@@ -1082,8 +1082,8 @@ public class Main {
 		//options.setLocalDataDirectory(2, Path.of("E:\\database\\dataDir1"));
 
 		//SQLite.initialize(dbPath, options);
-		//SQLite.initialize(dbPath, Path.of("C:\\Users\\xyz\\synclite\\demo\\db\\synclite_logger.conf"));
-		//SQLite.initialize(dbPath, Path.of("C:\\Users\\xyz\\synclite\\demo\\db\\synclite_logger.conf"), "1");
+		//SQLite.initialize(dbPath, Path.of("C:\\Users\\xyz\\synclite\\demo\\db\\synclite.conf"));
+		//SQLite.initialize(dbPath, Path.of("C:\\Users\\xyz\\synclite\\demo\\db\\synclite.conf"), "1");
 
 		Path dbPath = syncLiteDB.resolve("testDuckVector.db");
 		Path config = syncLiteLoggerConfig;	
@@ -1132,8 +1132,8 @@ public class Main {
 		//options.setLocalDataDirectory(2, Path.of("E:\\database\\dataDir1"));
 
 		//SQLite.initialize(dbPath, options);
-		//SQLite.initialize(dbPath, Path.of("C:\\Users\\xyz\\synclite\\demo\\db\\synclite_logger.conf"));
-		//SQLite.initialize(dbPath, Path.of("C:\\Users\\xyz\\synclite\\demo\\db\\synclite_logger.conf"), "1");
+		//SQLite.initialize(dbPath, Path.of("C:\\Users\\xyz\\synclite\\demo\\db\\synclite.conf"));
+		//SQLite.initialize(dbPath, Path.of("C:\\Users\\xyz\\synclite\\demo\\db\\synclite.conf"), "1");
 
 		Path dbPath = syncLiteDB.resolve("testDuckDBConcurrent.db");
 		Path config = syncLiteLoggerConfig;	
@@ -1188,8 +1188,8 @@ public class Main {
 		//options.setLocalDataDirectory(2, Path.of("E:\\database\\dataDir1"));
 
 		//SQLite.initialize(dbPath, options);
-		//SQLite.initialize(dbPath, Path.of("C:\\Users\\xyz\\synclite\\demo\\db\\synclite_logger.conf"));
-		//SQLite.initialize(dbPath, Path.of("C:\\Users\\xyz\\synclite\\demo\\db\\synclite_logger.conf"), "1");
+		//SQLite.initialize(dbPath, Path.of("C:\\Users\\xyz\\synclite\\demo\\db\\synclite.conf"));
+		//SQLite.initialize(dbPath, Path.of("C:\\Users\\xyz\\synclite\\demo\\db\\synclite.conf"), "1");
 
 		Path dbPath = syncLiteDB.resolve("testH2Basic.db");
 		Path config = syncLiteLoggerConfig;	
@@ -1261,8 +1261,8 @@ public class Main {
 		//options.setLocalDataDirectory(2, Path.of("E:\\database\\dataDir1"));
 
 		//SQLite.initialize(dbPath, options);
-		//SQLite.initialize(dbPath, Path.of("C:\\Users\\xyz\\synclite\\demo\\db\\synclite_logger.conf"));
-		//SQLite.initialize(dbPath, Path.of("C:\\Users\\xyz\\synclite\\demo\\db\\synclite_logger.conf"), "1");
+		//SQLite.initialize(dbPath, Path.of("C:\\Users\\xyz\\synclite\\demo\\db\\synclite.conf"));
+		//SQLite.initialize(dbPath, Path.of("C:\\Users\\xyz\\synclite\\demo\\db\\synclite.conf"), "1");
 
 		Path dbPath = syncLiteDB.resolve("testHyperSQLBasic.db");
 		Path config = syncLiteLoggerConfig;	
@@ -1329,8 +1329,8 @@ public class Main {
 		//options.setLocalDataDirectory(2, Path.of("E:\\database\\dataDir1"));
 
 		//SQLite.initialize(dbPath, options);
-		//SQLite.initialize(dbPath, Path.of("C:\\Users\\xyz\\synclite\\demo\\db\\synclite_logger.conf"));
-		//SQLite.initialize(dbPath, Path.of("C:\\Users\\xyz\\synclite\\demo\\db\\synclite_logger.conf"), "1");
+		//SQLite.initialize(dbPath, Path.of("C:\\Users\\xyz\\synclite\\demo\\db\\synclite.conf"));
+		//SQLite.initialize(dbPath, Path.of("C:\\Users\\xyz\\synclite\\demo\\db\\synclite.conf"), "1");
 
 		Path dbPath = syncLiteDB.resolve("testDuckDBConcurrent.db");
 		Path config = syncLiteLoggerConfig;	
@@ -1427,8 +1427,8 @@ public class Main {
 		//options.setLocalDataDirectory(2, Path.of("E:\\database\\dataDir1"));
 
 		//SQLite.initialize(dbPath, options);
-		//SQLite.initialize(dbPath, Path.of("C:\\Users\\xyz\\synclite\\demo\\db\\synclite_logger.conf"));
-		//SQLite.initialize(dbPath, Path.of("C:\\Users\\xyz\\synclite\\demo\\db\\synclite_logger.conf"), "1");
+		//SQLite.initialize(dbPath, Path.of("C:\\Users\\xyz\\synclite\\demo\\db\\synclite.conf"));
+		//SQLite.initialize(dbPath, Path.of("C:\\Users\\xyz\\synclite\\demo\\db\\synclite.conf"), "1");
 
 		Path dbPath = syncLiteDB.resolve("testDerbyBasic.db");
 		Path config = syncLiteLoggerConfig;	

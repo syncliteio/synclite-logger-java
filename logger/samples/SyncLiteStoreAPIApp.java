@@ -45,7 +45,7 @@ public class SyncLiteStoreAPIApp {
     public static void main(String[] args) throws ClassNotFoundException, SQLException {
         Class.forName("io.synclite.logger.SQLiteStore");
         Path dbPath = Path.of("sample_store_api.db");
-        SQLiteStore.initialize(dbPath, Path.of("synclite_logger.conf"));
+        SQLiteStore.initialize(dbPath, Path.of("synclite.conf"));
 
         try (SyncLiteStore store = SQLiteStore.open(dbPath)) {
             // 1) CREATE TABLE via Store API

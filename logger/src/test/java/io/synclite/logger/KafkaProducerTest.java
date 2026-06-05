@@ -45,8 +45,8 @@ class KafkaProducerTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        Path testHome = Path.of(System.getProperty("user.home")).resolve("synclite").resolve("test");
-        testDbPath = testHome.resolve("db").resolve("KafkaProducerTest");
+        Path testHome = Path.of(System.getProperty("user.home")).resolve("synclite").resolve("tests");
+        testDbPath = testHome.resolve("db").resolve("javalogger").resolve("KafkaProducerTest");
         testStageDir = testHome.resolve("stageDir");
 
         if (Files.exists(testDbPath)) {
@@ -97,7 +97,7 @@ class KafkaProducerTest {
         Properties props = new Properties();
         props.setProperty("device-path", testDbPath.toString());
         props.setProperty("local-data-stage-directory", testStageDir.toString());
-        props.setProperty("destination-type", "FS");
+        props.setProperty("device-stage-type", "FS");
 
         producer = new KafkaProducer(props);
 

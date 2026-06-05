@@ -1,27 +1,37 @@
-# SyncLite Logger Samples
+# SyncLite Logger — Java Samples
 
-This folder contains the canonical sample set requested for this repository.
+This folder contains the Java samples for the SyncLite Logger.
 
-## Java
+## Samples
 
-- SyncliteDeviceApp.java
-- SyncLiteStoreDeviceApp.java (replaces previous Appender sample)
-- SyncLiteStreamingApp.java
-- SyncLiteStoreAPIApp.java
-- SyncLiteStreamAPIApp.java
-- SyncLiteKafkaProduceApp.java
-- SyncLiteJedisAPIApp.java
+- `SyncliteDeviceApp.java`
+- `SyncLiteStoreDeviceApp.java` (replaces previous Appender sample)
+- `SyncLiteStreamingApp.java`
+- `SyncLiteStoreAPIApp.java`
+- `SyncLiteStreamAPIApp.java`
+- `SyncLiteKafkaProduceApp.java`
+- `SyncLiteJedisAPIApp.java`
 
-## Python
+## Build & Run
 
-- JayDeBeApi/ (SQL-style bridge samples)
-- JPype/ (direct Java API bridge samples)
+Compile against the built logger jar:
 
-JPype folder includes API-style samples as well:
+```
+javac -cp ..\target\synclite-oss.jar *.java
+```
 
-- SyncLiteStoreAPIApp.py
-- SyncLiteStreamAPIApp.py
-- SyncLiteKafkaProduceAPIApp.py
-- SyncLiteJedisAPIApp.py
+Run any sample (example):
 
-See language-specific README files for quick run instructions.
+```
+java -cp ..\target\synclite-oss.jar;. SyncliteDeviceApp
+```
+
+Notes:
+- Samples default to SQLite and include inline comments for replacing SQL-device / appender device types.
+- Keep `synclite.conf` in the current working directory.
+
+## Python users
+
+Python does not use this Java logger. Python consumes SyncLite through the
+Rust runtime and its PyO3 bindings (`synclite` package). Samples live in
+[`synclite-code-samples/synclite-logger/python/`](../../../../synclite-code-samples/synclite-logger/python/).

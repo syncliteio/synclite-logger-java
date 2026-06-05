@@ -35,7 +35,7 @@ import org.junit.jupiter.api.Test;
  * see the full, contiguous history.
  *
  * <p>The Streaming device does NOT persist inserted rows to the local SQLite
- * file — it is a write-ahead CDC log, not a queryable store.  Correctness
+ * file – it is a write-ahead CDC log, not a queryable store.  Correctness
  * assertions are therefore commit-id cross-checks: after the device is closed
  * the commit_id in {@code synclite_txn} must match the latest commit_id
  * written to the stage log file.
@@ -44,12 +44,12 @@ class SyncLiteStreamTest {
 
     @Test
     void testAllStreamingAPIs() throws Exception {
-        Path testHome       = Path.of(System.getProperty("user.home")).resolve("synclite").resolve("test");
-        Path testDbPath     = testHome.resolve("db").resolve("SyncLiteStreamTest").resolve("test.db");
+        Path testHome       = Path.of(System.getProperty("user.home")).resolve("synclite").resolve("tests");
+        Path testDbPath     = testHome.resolve("db").resolve("javalogger").resolve("SyncLiteStreamTest").resolve("test.db");
         Path testStageDir   = testHome.resolve("stageDir");
-        Path testConfigPath = testDbPath.getParent().resolve("synclite_logger.conf");
+        Path testConfigPath = testDbPath.getParent().resolve("synclite.conf");
 
-        // One-time cleanup from any previous run — never repeated between phases.
+        // One-time cleanup from any previous run – never repeated between phases.
         for (int attempt = 0; attempt < 20 && Files.exists(testDbPath.getParent()); attempt++) {
             try { deleteRecursively(testDbPath.getParent()); break; }
             catch (IOException e) { Thread.sleep(200); }
@@ -63,19 +63,19 @@ class SyncLiteStreamTest {
         Files.createDirectories(testDbPath.getParent());
         Files.createDirectories(testStageDir);
         Files.writeString(testConfigPath,
-                "local-data-stage-directory = " + testStageDir + "\ndestination-type = FS\n");
+                "local-data-stage-directory = " + testStageDir + "\ndevice-stage-type = FS\n");
 
         Class.forName("io.synclite.logger.Streaming");
         Streaming.initialize(testDbPath, testConfigPath, "synclitestream");
 
-        // ── Phase 1: single insert ──────────────────────────────────────────
+        // â”€â”€ Phase 1: single insert â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         try (SyncLiteStream stream = SyncLiteStream.open(testDbPath)) {
             stream.createTable("stream_events",
                     new LinkedHashMap<>(Map.of("ts", "BIGINT", "type", "TEXT", "user", "TEXT")));
             stream.insert("stream_events", Map.of("ts", 1000L, "type", "click", "user", "alice"));
         }
 
-        // ── Phase 2: insert batch ───────────────────────────────────────────
+        // â”€â”€ Phase 2: insert batch â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         List<Map<String, Object>> batch = new ArrayList<>();
         for (int i = 0; i < 5; i++) {
             batch.add(Map.of("ts", (long) i, "type", "view", "user", "user" + i));
@@ -84,21 +84,21 @@ class SyncLiteStreamTest {
             stream.insertBatch("stream_events", batch);
         }
 
-        // ── Phase 3: auto table creation ────────────────────────────────────
-        // Table is NOT pre-created — must be created automatically on first insert.
+        // â”€â”€ Phase 3: auto table creation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // Table is NOT pre-created – must be created automatically on first insert.
         try (SyncLiteStream stream = SyncLiteStream.open(testDbPath)) {
             stream.insert("metrics", Map.of("name", "cpu", "value", 0.75));
         }
 
-        // ── Phase 4: auto column addition ───────────────────────────────────
+        // â”€â”€ Phase 4: auto column addition â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         try (SyncLiteStream stream = SyncLiteStream.open(testDbPath)) {
             stream.createTable("logs", new LinkedHashMap<>(Map.of("msg", "TEXT")));
             stream.insert("logs", Map.of("msg", "first"));
-            // Second insert introduces new column "level" via ALTER TABLE — must not throw.
+            // Second insert introduces new column "level" via ALTER TABLE – must not throw.
             stream.insert("logs", Map.of("msg", "second", "level", "INFO"));
         }
 
-        // ── Phase 5: transactional commit ───────────────────────────────────
+        // â”€â”€ Phase 5: transactional commit â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         try (SyncLiteStream stream = SyncLiteStream.open(testDbPath)) {
             stream.createTable("txn_events",
                     new LinkedHashMap<>(Map.of("ts", "BIGINT", "type", "TEXT")));
@@ -108,17 +108,17 @@ class SyncLiteStreamTest {
             stream.commit();
         }
 
-        // ── Phase 6: transactional rollback ─────────────────────────────────
+        // â”€â”€ Phase 6: transactional rollback â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         try (SyncLiteStream stream = SyncLiteStream.open(testDbPath)) {
-            // First row — auto-committed.
+            // First row – auto-committed.
             stream.insert("txn_events", Map.of("ts", 3L, "type", "good"));
-            // Second row — rolled back; must not produce an additional log entry.
+            // Second row – rolled back; must not produce an additional log entry.
             stream.setAutoCommit(false);
             stream.insert("txn_events", Map.of("ts", 4L, "type", "bad"));
             stream.rollback();
         }
 
-        // ── Phase 7: multiple tables independent ────────────────────────────
+        // â”€â”€ Phase 7: multiple tables independent â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         try (SyncLiteStream stream = SyncLiteStream.open(testDbPath)) {
             stream.createTable("clicks",
                     new LinkedHashMap<>(Map.of("url", "TEXT", "user", "TEXT")));
@@ -128,8 +128,8 @@ class SyncLiteStreamTest {
             stream.insert("impressions", Map.of("ad", "banner1", "user", "bob"));
         }
 
-        // ── Phase 8: batch with heterogeneous rows ───────────────────────────
-        // Rows with different column sets — the union of columns must be used.
+        // â”€â”€ Phase 8: batch with heterogeneous rows â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // Rows with different column sets – the union of columns must be used.
         List<Map<String, Object>> hetBatch = List.of(
                 new LinkedHashMap<>(Map.of("a", 1L, "b", "x")),
                 new LinkedHashMap<>(Map.of("a", 2L, "c", "y"))   // no "b", adds "c"
@@ -140,28 +140,28 @@ class SyncLiteStreamTest {
             stream.insertBatch("mixed", hetBatch);
         }
 
-        // ── Phase 9: create and drop table ──────────────────────────────────
+        // â”€â”€ Phase 9: create and drop table â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         try (SyncLiteStream stream = SyncLiteStream.open(testDbPath)) {
             stream.createTable("tmp", new LinkedHashMap<>(Map.of("id", "BIGINT", "val", "TEXT")));
             stream.insert("tmp", Map.of("id", 1L, "val", "hello"));
             stream.dropTable("tmp");
-            // Recreate with same name — must not throw.
+            // Recreate with same name – must not throw.
             stream.createTable("tmp", new LinkedHashMap<>(Map.of("id", "BIGINT")));
         }
 
-        // ── Phase 10: close is idempotent ───────────────────────────────────
+        // â”€â”€ Phase 10: close is idempotent â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         SyncLiteStream stream10 = SyncLiteStream.open(testDbPath);
         stream10.insert("stream_events", Map.of("ts", 9999L, "type", "idempotent", "user", "test"));
         stream10.close();
         // Second close must not throw.
         assertDoesNotThrow(stream10::close);
 
-        // ── Phase 11: empty batch is no-op ──────────────────────────────────
+        // â”€â”€ Phase 11: empty batch is no-op â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         try (SyncLiteStream stream = SyncLiteStream.open(testDbPath)) {
             stream.insertBatch("stream_events", List.of()); // must not throw
         }
 
-        // ── Final validation ─────────────────────────────────────────────────
+        // â”€â”€ Final validation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         // Close the device to flush all pending log segments to stageDir, then
         // verify that the commit_id in synclite_txn matches the latest entry
         // in the accumulated stage log files.
@@ -193,9 +193,9 @@ class SyncLiteStreamTest {
                 "commit_id in synclite_txn must match the latest commit in the stage log file");
     }
 
-    // -------------------------------------------------------------------------
+    // ---
     // Helpers
-    // -------------------------------------------------------------------------
+    // ---
 
     private Path findLatestSqlLog(Path stageDir) throws IOException {
         Pattern pattern = Pattern.compile("^\\d+\\.sqllog$");

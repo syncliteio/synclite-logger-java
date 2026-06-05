@@ -42,10 +42,10 @@ class SQLiteTransactionalTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        Path testHome = Path.of(System.getProperty("user.home")).resolve("synclite").resolve("test");
-        testDbPath = testHome.resolve("db").resolve("SQLiteTransactionalTest").resolve("test-sqlite.db");
+        Path testHome = Path.of(System.getProperty("user.home")).resolve("synclite").resolve("tests");
+        testDbPath = testHome.resolve("db").resolve("javalogger").resolve("SQLiteTransactionalTest").resolve("test-sqlite.db");
         testStageDir = testHome.resolve("stageDir");
-        testConfigPath = testDbPath.getParent().resolve("synclite_logger.conf");
+        testConfigPath = testDbPath.getParent().resolve("synclite.conf");
 
         // Clean up previous test state before each run
         if (Files.exists(testDbPath.getParent())) {
@@ -63,7 +63,7 @@ class SQLiteTransactionalTest {
 
         // Create a basic config file
         String configContent = "local-data-stage-directory = " + testStageDir + "\n" +
-                              "destination-type = FS\n";
+                              "device-stage-type = FS\n";
         Files.writeString(testConfigPath, configContent);
 
         // Load the SQLite driver

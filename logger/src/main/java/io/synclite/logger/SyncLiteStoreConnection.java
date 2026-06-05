@@ -34,7 +34,7 @@ public class SyncLiteStoreConnection extends JDBC4Connection {
     private PreparedStatement commitLoggerPstmt;
     protected Path path;
     protected long commitId;
-    protected EventLogger sqlLogger;
+    protected TxnLogger sqlLogger;
     private boolean ready = false;
     protected Properties props;
 
@@ -43,14 +43,14 @@ public class SyncLiteStoreConnection extends JDBC4Connection {
         this.props = prop;
         initPath(fileName);
         this.userAutoCommit = true;
-        this.sqlLogger = (EventLogger) SQLLogger.findInstance(path);
+        this.sqlLogger = (TxnLogger) SQLLogger.findInstance(path);
         if (this.sqlLogger == null) {
             if (prop != null) {
                 initDevice(prop);
-                this.sqlLogger = (EventLogger) SQLLogger.findInstance(path);
+                this.sqlLogger = (TxnLogger) SQLLogger.findInstance(path);
             } else {
                 initDeviceWithoutProps();
-                this.sqlLogger = (EventLogger) SQLLogger.findInstance(path);
+                this.sqlLogger = (TxnLogger) SQLLogger.findInstance(path);
             }
             if (this.sqlLogger == null) {
                 throw new SQLException("SyncLite device at path " + path + " not initialized. Please initialize the device first.");
@@ -203,15 +203,18 @@ public class SyncLiteStoreConnection extends JDBC4Connection {
             return;
         }
         recordCommit();
-        this.sqlLogger.commit(commitId);
+        this.sqlLogger.flush(commitId);
         connCommit();
+        this.sqlLogger.logCommitAndFlush(commitId);
         this.commitId = this.sqlLogger.getNextCommitID();
     }
 
     @Override
     public void rollback() throws SQLException {
-        sqlLogger.rollback(commitId);
+        this.sqlLogger.flush(commitId);
         connRollback();
+        this.sqlLogger.logRollbackAndFlush(commitId);
+        this.commitId = this.sqlLogger.getNextCommitID();
     }
 
     protected void recordCommit() throws SQLException {

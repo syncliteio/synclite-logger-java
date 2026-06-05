@@ -34,7 +34,7 @@ public class DBLoggerConnection extends JDBC4Connection {
     private PreparedStatement commitLoggerPstmt;
     protected Path path;
     protected long commitId;
-    protected EventLogger sqlLogger;
+	protected TxnLogger sqlLogger;
     private boolean ready = false;
     private Properties props;
     public DBLoggerConnection(String url, String fileName, Properties prop) throws SQLException {
@@ -43,17 +43,17 @@ public class DBLoggerConnection extends JDBC4Connection {
         this.userAutoCommit = true;
         this.props = prop;
         super.setAutoCommit(false);
-        this.sqlLogger = (EventLogger) SQLLogger.findInstance(path);
+		this.sqlLogger = (TxnLogger) SQLLogger.findInstance(path);
         if (this.sqlLogger == null) {
         	//Check if props are specified and props have a property "config" with value as a path to a synclite logger configuration file.
         	if (prop != null) {
         		initDevice(prop);
         		cleanUpProps();
-	        	this.sqlLogger = (EventLogger) SQLLogger.findInstance(path);
+	        	this.sqlLogger = (TxnLogger) SQLLogger.findInstance(path);
         	} else {
         		//Try initializing without configs.
         		initDeviceWithoutProps();
-        		this.sqlLogger = (EventLogger) SQLLogger.findInstance(path);        		
+				this.sqlLogger = (TxnLogger) SQLLogger.findInstance(path);			
         	}        	
         	if (this.sqlLogger == null) {
         		throw new SQLException("SyncLite device at path " + path + " not initialized. Please initialize the device first.");
@@ -189,20 +189,18 @@ public class DBLoggerConnection extends JDBC4Connection {
     @Override 
     public void commit() throws SQLException {
         recordCommit();
-        //
-        //2 PC
-        //Flush the log in log database
-        //Commit on the master database
-        //
-    	this.sqlLogger.commit(commitId);
-        super.commit();
+		this.sqlLogger.flush(commitId);
+		super.commit();
+		this.sqlLogger.logCommitAndFlush(commitId);
         this.commitId = this.sqlLogger.getNextCommitID();
     }
 
     @Override
 	public void rollback() throws SQLException {
-    	sqlLogger.rollback(commitId);
+		this.sqlLogger.flush(commitId);
     	super.rollback();
+		this.sqlLogger.logRollbackAndFlush(commitId);
+		this.commitId = this.sqlLogger.getNextCommitID();
     }
 
     protected void recordCommit() throws SQLException {

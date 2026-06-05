@@ -166,6 +166,19 @@ public class SyncLiteStream implements AutoCloseable {
         writer.dropTable(table);
     }
 
+    /**
+     * Renames a table.
+     *
+     * <p>The DDL is logged to the SyncLite replication log so downstream
+     * consumers can observe the table rename.
+     *
+     * @param oldTable current table name
+     * @param newTable new table name
+     */
+    public synchronized void renameTable(String oldTable, String newTable) throws SQLException {
+        writer.conn.createStatement().execute("ALTER TABLE " + oldTable + " RENAME TO " + newTable);
+    }
+
     // -------------------------------------------------------------------------
     // Unlogged-write API
     // -------------------------------------------------------------------------

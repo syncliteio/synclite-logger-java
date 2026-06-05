@@ -43,7 +43,7 @@ public class SyncLiteStoreDeviceApp {
     public static void main(String[] args) throws ClassNotFoundException, SQLException {
         Class.forName("io.synclite.logger.SQLiteStore");
         Path dbPath = Path.of("sample_store_sqlite.db");
-        SQLiteStore.initialize(dbPath, Path.of("synclite_logger.conf"));
+        SQLiteStore.initialize(dbPath, Path.of("synclite.conf"));
 
         try (Connection conn = DriverManager.getConnection("jdbc:synclite_sqlite_store:sample_store_sqlite.db")) {
             try (Statement stmt = conn.createStatement()) {

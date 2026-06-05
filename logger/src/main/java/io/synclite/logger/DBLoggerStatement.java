@@ -29,7 +29,7 @@ public class DBLoggerStatement extends JDBC4Statement {
 	private SQLLogger sqlLogger;
 	protected DBLoggerStatement(SQLiteConnection conn) throws SQLException {
 		super(conn);
-		this.sqlLogger = EventLogger.findInstance(getConn().getPath());
+		this.sqlLogger = SQLLogger.findInstance(getConn().getPath());
 	}
 
 	protected DBLoggerConnection getConn() {

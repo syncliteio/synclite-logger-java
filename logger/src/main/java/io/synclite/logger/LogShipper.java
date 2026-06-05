@@ -150,6 +150,7 @@ class LogShipper {
             if (moved) {
                 metadataMgr.updateProperty("shipped_data_file_sequence_number-" + destIndex, shippedUpto);
                 this.shippedDataFileSequenceNumber.set(shippedUpto);
+                tracer.info("Data files shipped : destIndex=" + destIndex + " shippedUpto=" + shippedUpto + " archiver=" + archiver.getClass().getSimpleName());
                 
                 //Cleanup shipped data files
                 for (long i = currentShippedDataFileSequenceNumber + 1; i <= shippedUpto; ++i) {
@@ -188,6 +189,7 @@ class LogShipper {
             if (moved) {
                 metadataMgr.updateProperty("shipped_log_segment_sequence_number-" + destIndex, shippedUpto);
                 this.shippedLogSegmentSequenceNumber.set(shippedUpto);
+                tracer.info("Log segments shipped : destIndex=" + destIndex + " shippedUpto=" + shippedUpto + " archiver=" + archiver.getClass().getSimpleName());
 
                 //Cleanup shipped log files
                 for (long i = currentShippedLogSegmentSequenceNumber + 1; i <= shippedUpto; ++i) {

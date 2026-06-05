@@ -98,7 +98,7 @@ public final class H2Appender extends SyncLite {
 	@Override
 	protected void getOrCreateLoggerInstace(Path dbPath, SyncLiteOptions options, Logger tracer) throws SQLException {
 		//Use SyncTxnLogger for this device.
-		SyncEventLogger.getInstance(dbPath, options, tracer);
+		SyncTxnLogger.getInstance(dbPath, options, tracer);
 	}
 }
 

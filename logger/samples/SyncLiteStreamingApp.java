@@ -39,7 +39,7 @@ public class SyncLiteStreamingApp {
     public static void main(String[] args) throws ClassNotFoundException, SQLException {
         Class.forName("io.synclite.logger.Streaming");
         Path dbPath = Path.of("sample_streaming.db");
-        Streaming.initialize(dbPath, Path.of("synclite_logger.conf"));
+        Streaming.initialize(dbPath, Path.of("synclite.conf"));
 
         try (Connection conn = DriverManager.getConnection("jdbc:synclite_streaming:sample_streaming.db")) {
             try (Statement stmt = conn.createStatement()) {

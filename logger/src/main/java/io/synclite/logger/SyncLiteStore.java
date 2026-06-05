@@ -122,6 +122,16 @@ public class SyncLiteStore implements AutoCloseable {
         writer.dropTable(table);
     }
 
+    /**
+     * Renames a table.
+     *
+     * @param oldTable current table name
+     * @param newTable new table name
+     */
+    public synchronized void renameTable(String oldTable, String newTable) throws SQLException {
+        writer.conn.createStatement().execute("ALTER TABLE " + oldTable + " RENAME TO " + newTable);
+    }
+
     // -------------------------------------------------------------------------
     // DML — insert
     // -------------------------------------------------------------------------

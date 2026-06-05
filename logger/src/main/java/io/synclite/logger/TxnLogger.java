@@ -83,8 +83,8 @@ abstract class TxnLogger extends SQLLogger {
 		String strVal = metadataMgr.getStringProperty("device_type");
 		if (strVal == null) {
 			metadataMgr.insertProperty("device_type", options.getDeviceType());
-		} else if (!SyncLiteUtils.isTransactionalDevice(strVal)) {
-			throw new SQLException("SyncLite : This device type : " + strVal + " is not a SyncLite transactional device.");
+		} else if (!strVal.equalsIgnoreCase(options.getDeviceType().toString())) {
+			throw new SQLException("SyncLite : This device metadata type : " + strVal + " does not match configured device type : " + options.getDeviceType());
 		}
 		
 		boolean allowsConcurrentWrites = SyncLiteUtils.deviceAllowsConcurrentWriters(options.getDeviceType());
@@ -127,7 +127,10 @@ abstract class TxnLogger extends SQLLogger {
 
 	@Override
 	protected long getDefaultPageSize() {
-		return 0;
+		if (SyncLiteUtils.isTransactionalDevice(options.getDeviceType().toString())) {
+			return 0;
+		}
+		return 512;
 	}
 
 	@Override

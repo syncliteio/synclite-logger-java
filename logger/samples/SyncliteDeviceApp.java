@@ -54,7 +54,7 @@ public class SyncliteDeviceApp {
         //    jdbc:synclite_sqlite: -> jdbc:synclite_derby:, jdbc:synclite_duckdb:, jdbc:synclite_h2:, jdbc:synclite_hsqldb:
         Class.forName("io.synclite.logger.SQLite");
         Path dbPath = Path.of("sample_txn_sqlite.db");
-        SQLite.initialize(dbPath, Path.of("synclite_logger.conf"));
+        SQLite.initialize(dbPath, Path.of("synclite.conf"));
     }
 
     public void runBusinessLogic() throws SQLException {
