@@ -68,14 +68,14 @@ class SyncLiteStreamTest {
         Class.forName("io.synclite.logger.Streaming");
         Streaming.initialize(testDbPath, testConfigPath, "synclitestream");
 
-        // â”€â”€ Phase 1: single insert â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // –– Phase 1: single insert ––––––––––––––––––––––––––––––––––––––––––
         try (SyncLiteStream stream = SyncLiteStream.open(testDbPath)) {
             stream.createTable("stream_events",
                     new LinkedHashMap<>(Map.of("ts", "BIGINT", "type", "TEXT", "user", "TEXT")));
             stream.insert("stream_events", Map.of("ts", 1000L, "type", "click", "user", "alice"));
         }
 
-        // â”€â”€ Phase 2: insert batch â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // –– Phase 2: insert batch –––––––––––––––––––––––––––––––––––––––––––
         List<Map<String, Object>> batch = new ArrayList<>();
         for (int i = 0; i < 5; i++) {
             batch.add(Map.of("ts", (long) i, "type", "view", "user", "user" + i));
@@ -84,13 +84,13 @@ class SyncLiteStreamTest {
             stream.insertBatch("stream_events", batch);
         }
 
-        // â”€â”€ Phase 3: auto table creation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // –– Phase 3: auto table creation ––––––––––––––––––––––––––––––––––––
         // Table is NOT pre-created – must be created automatically on first insert.
         try (SyncLiteStream stream = SyncLiteStream.open(testDbPath)) {
             stream.insert("metrics", Map.of("name", "cpu", "value", 0.75));
         }
 
-        // â”€â”€ Phase 4: auto column addition â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // –– Phase 4: auto column addition –––––––––––––––––––––––––––––––––––
         try (SyncLiteStream stream = SyncLiteStream.open(testDbPath)) {
             stream.createTable("logs", new LinkedHashMap<>(Map.of("msg", "TEXT")));
             stream.insert("logs", Map.of("msg", "first"));
@@ -98,7 +98,7 @@ class SyncLiteStreamTest {
             stream.insert("logs", Map.of("msg", "second", "level", "INFO"));
         }
 
-        // â”€â”€ Phase 5: transactional commit â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // –– Phase 5: transactional commit –––––––––––––––––––––––––––––––––––
         try (SyncLiteStream stream = SyncLiteStream.open(testDbPath)) {
             stream.createTable("txn_events",
                     new LinkedHashMap<>(Map.of("ts", "BIGINT", "type", "TEXT")));
@@ -108,7 +108,7 @@ class SyncLiteStreamTest {
             stream.commit();
         }
 
-        // â”€â”€ Phase 6: transactional rollback â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // –– Phase 6: transactional rollback –––––––––––––––––––––––––––––––––
         try (SyncLiteStream stream = SyncLiteStream.open(testDbPath)) {
             // First row – auto-committed.
             stream.insert("txn_events", Map.of("ts", 3L, "type", "good"));
@@ -118,7 +118,7 @@ class SyncLiteStreamTest {
             stream.rollback();
         }
 
-        // â”€â”€ Phase 7: multiple tables independent â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // –– Phase 7: multiple tables independent ––––––––––––––––––––––––––––
         try (SyncLiteStream stream = SyncLiteStream.open(testDbPath)) {
             stream.createTable("clicks",
                     new LinkedHashMap<>(Map.of("url", "TEXT", "user", "TEXT")));
@@ -128,7 +128,7 @@ class SyncLiteStreamTest {
             stream.insert("impressions", Map.of("ad", "banner1", "user", "bob"));
         }
 
-        // â”€â”€ Phase 8: batch with heterogeneous rows â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // –– Phase 8: batch with heterogeneous rows –––––––––––––––––––––––––––
         // Rows with different column sets – the union of columns must be used.
         List<Map<String, Object>> hetBatch = List.of(
                 new LinkedHashMap<>(Map.of("a", 1L, "b", "x")),
@@ -140,7 +140,7 @@ class SyncLiteStreamTest {
             stream.insertBatch("mixed", hetBatch);
         }
 
-        // â”€â”€ Phase 9: create and drop table â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // –– Phase 9: create and drop table ––––––––––––––––––––––––––––––––––
         try (SyncLiteStream stream = SyncLiteStream.open(testDbPath)) {
             stream.createTable("tmp", new LinkedHashMap<>(Map.of("id", "BIGINT", "val", "TEXT")));
             stream.insert("tmp", Map.of("id", 1L, "val", "hello"));
@@ -149,19 +149,19 @@ class SyncLiteStreamTest {
             stream.createTable("tmp", new LinkedHashMap<>(Map.of("id", "BIGINT")));
         }
 
-        // â”€â”€ Phase 10: close is idempotent â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // –– Phase 10: close is idempotent –––––––––––––––––––––––––––––––––––
         SyncLiteStream stream10 = SyncLiteStream.open(testDbPath);
         stream10.insert("stream_events", Map.of("ts", 9999L, "type", "idempotent", "user", "test"));
         stream10.close();
         // Second close must not throw.
         assertDoesNotThrow(stream10::close);
 
-        // â”€â”€ Phase 11: empty batch is no-op â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // –– Phase 11: empty batch is no-op ––––––––––––––––––––––––––––––––––
         try (SyncLiteStream stream = SyncLiteStream.open(testDbPath)) {
             stream.insertBatch("stream_events", List.of()); // must not throw
         }
 
-        // â”€â”€ Final validation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // –– Final validation –––––––––––––––––––––––––––––––––––––––––––––––––
         // Close the device to flush all pending log segments to stageDir, then
         // verify that the commit_id in synclite_txn matches the latest entry
         // in the accumulated stage log files.
