@@ -1,0 +1,128 @@
+/*
+ * Copyright (c) 2024 mahendra.chavan@synclite.io, all rights reserved.
+ *
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.  You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License
+ * is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+ * or implied.  See the License for the specific language governing permissions and limitations
+ * under the License.
+ *
+ */
+
+package io.synclite;
+
+import java.nio.file.Path;
+import java.sql.SQLException;
+import java.util.Properties;
+
+import org.apache.log4j.Logger;
+import org.sqlite.SQLiteConnection;
+
+public final class H2 extends SyncLite {
+
+	private final static String PREFIX = "jdbc:synclite_h2:";
+
+	@Override
+	protected final SQLiteConnection createSyncLiteConnection(String url, Properties prop) throws SQLException {
+        if (!checkDeviceURL(url)) {
+            return null;       
+        }
+        url = url.trim();
+        prop.put("original-db-url", url);
+        prop.put("original-db-path", extractAddress(url, PREFIX));
+        //return new DuckDBConnection(url, extractAddress(url), prop);
+    	return new H2Connection(url, extractAddress(url, PREFIX), prop); 
+    }
+    
+    
+	public static synchronized final void initialize(Path dbPath) throws SQLException {
+		SyncLite.initialize(DeviceType.H2, dbPath);
+	}
+
+	public static synchronized final void initialize(Path dbPath, String deviceName) throws SQLException {
+		SyncLite.initialize(DeviceType.H2, dbPath, deviceName);
+	}
+
+	public static synchronized final void initialize(Path dbPath, SyncLiteOptions options) throws SQLException {
+		SyncLite.initialize(DeviceType.H2, dbPath, options);
+	}
+
+	public static synchronized final void initialize(Path dbPath, SyncLiteOptions options, String deviceName) throws SQLException {
+		SyncLite.initialize(DeviceType.H2, dbPath, options, deviceName);
+	}
+
+	public static synchronized final void initialize(Path dbPath, Path propsPath) throws SQLException {
+		SyncLite.initialize(DeviceType.H2, dbPath, propsPath);
+	}
+
+	public static synchronized final void initialize(Path dbPath, Path propsPath, String deviceName) throws SQLException {
+		SyncLite.initialize(DeviceType.H2, dbPath, propsPath, deviceName);
+	}
+    
+    @Override
+    protected String getPrefix() {
+    	return PREFIX;
+    }
+
+	protected DBProcessor getDBProcessor() {
+		return new H2Processor();
+	}
+
+	@Override
+	protected void validateLibs(Logger tracer) throws SQLException {
+		try {
+			Class.forName("org.sqlite.JDBC");
+		} catch (ClassNotFoundException e) {
+			tracer.error("Failed to load sqlite jdbc driver : " + e.getMessage());
+			throw new SQLException("Failed to load sqlite jdbc driver");
+		}    	
+		
+		try {
+    		Class.forName("org.h2.Driver");
+		} catch (ClassNotFoundException e) {
+			tracer.error("Failed to load H2 jdbc driver : " + e.getMessage());
+			throw new SQLException("Failed to load H2 jdbc driver");
+		}    	
+	}
+
+	@Override
+	protected void setDeviceTypeInOptions(SyncLiteOptions options) throws SQLException {
+		options.setDeviceType(DeviceType.H2);
+	}
+
+	@Override
+	protected void getOrCreateLoggerInstace(Path dbPath, SyncLiteOptions options, Logger tracer) throws SQLException {
+		//Use SyncTxnLogger for this device.
+		SyncTxnLogger.getInstance(dbPath, options, tracer);
+	}
+
+public static synchronized final void initialize(java.nio.file.Path dbPath, DestinationOptions destination) throws java.sql.SQLException {
+SyncLite.initialize(DeviceType.H2, dbPath, destination);
+}
+
+public static synchronized final void initialize(java.nio.file.Path dbPath, String deviceName, DestinationOptions destination) throws java.sql.SQLException {
+SyncLite.initialize(DeviceType.H2, dbPath, deviceName, destination);
+}
+
+public static synchronized final void initialize(java.nio.file.Path dbPath, SyncLiteOptions options, DestinationOptions destination) throws java.sql.SQLException {
+SyncLite.initialize(DeviceType.H2, dbPath, options, destination);
+}
+
+public static synchronized final void initialize(java.nio.file.Path dbPath, SyncLiteOptions options, String deviceName, DestinationOptions destination) throws java.sql.SQLException {
+SyncLite.initialize(DeviceType.H2, dbPath, options, deviceName, destination);
+}
+
+public static synchronized final void initialize(java.nio.file.Path dbPath, java.nio.file.Path propsPath, DestinationOptions destination) throws java.sql.SQLException {
+SyncLite.initialize(DeviceType.H2, dbPath, propsPath, destination);
+}
+
+public static synchronized final void initialize(java.nio.file.Path dbPath, java.nio.file.Path propsPath, String deviceName, DestinationOptions destination) throws java.sql.SQLException {
+SyncLite.initialize(DeviceType.H2, dbPath, propsPath, deviceName, destination);
+}
+
+}

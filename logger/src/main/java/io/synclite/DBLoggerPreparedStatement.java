@@ -1,0 +1,148 @@
+/*
+ * Copyright (c) 2024 mahendra.chavan@synclite.io, all rights reserved.
+ *
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.  You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License
+ * is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+ * or implied.  See the License for the specific language governing permissions and limitations
+ * under the License.
+ *
+ */
+
+package io.synclite;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.List;
+
+import org.sqlite.SQLiteConnection;
+import org.sqlite.jdbc4.JDBC4PreparedStatement;
+
+public class DBLoggerPreparedStatement extends JDBC4PreparedStatement {
+	private SQLLogger sqlLogger;
+	private boolean isDDL = false;
+	private String tableNameInDDL;
+	public DBLoggerPreparedStatement(SQLiteConnection conn, String sql) throws SQLException {
+		super(conn, sql);
+		List<String> subSqls = SyncLiteUtils.splitSqls(sql);
+		if (subSqls.size() > 1) {
+			throw new SQLException("Unsupported SQL: SyncLite DBLogger supports a single SQL statement as part of a PreparedStatement, multiple specified  : " + sql);			
+		}
+		SQLLogger logger = SQLLogger.findInstance(getConn().getPath());
+		String stippedSql = subSqls.get(0).strip();
+		String[] tokens = stippedSql.split("\\s+");		
+		if (tokens[0].equalsIgnoreCase("INSERT") && tokens[1].equalsIgnoreCase("INTO")) {
+			SyncLiteUtils.validateInsertForDBLoggerAndAppender(stippedSql, conn, logger);
+		} else if (tokens[0].equalsIgnoreCase("UPDATE")) {
+			SyncLiteUtils.validateUpdateForDBLoggerAndAppender(stippedSql);			
+		} else if (tokens[0].equalsIgnoreCase("DELETE") && tokens[1].equalsIgnoreCase("FROM")) {
+			SyncLiteUtils.validateDeleteForDBLoggerAndAppender(stippedSql);			
+		} else if ((tokens[0].equalsIgnoreCase("CREATE") || tokens[0].equalsIgnoreCase("DROP") || tokens[0].equalsIgnoreCase("ALTER")) &&
+				(tokens[1].equalsIgnoreCase("TABLE"))
+				) {
+			this.isDDL = true;
+			this.tableNameInDDL = SyncLiteUtils.getTableNameFromDDL(stippedSql);
+			SyncLiteUtils.validateProtectedInternalTableDDL(stippedSql, this.tableNameInDDL);
+		} else if (tokens[0].equalsIgnoreCase("SELECT")) {
+			//Allowed SQL
+		} else {
+			throw new SQLException("Unsupported SQL: " + sql);
+		}
+		this.sqlLogger = logger;
+	}
+
+	protected DBLoggerConnection getConn() {
+		return ((DBLoggerConnection ) this.conn);
+	}
+
+	private final void log() throws SQLException {
+		Object[] args = new Object[paramCount];
+		for (int pos=0; pos < paramCount; pos++) {
+			args[pos] = batch[batchPos + pos];
+		}
+		log(args);
+	}
+
+	protected void log(Object[] args) throws SQLException {
+		long commitId = ((DBLoggerConnection ) this.conn).getCommitId();
+		if (batchQueryCount == 0) {
+			sqlLogger.log(commitId, this.sql, args);
+		} else if (batchQueryCount == 1){
+			sqlLogger.log(commitId, this.sql, args);
+		} else {
+			sqlLogger.log(commitId, null, args);
+		}
+	}
+
+	@Override
+	public final boolean execute() throws SQLException {
+		boolean result = false;
+		if (this.isDDL) {
+			result = super.execute();
+			if (this.sqlLogger != null && this.tableNameInDDL != null) {
+				this.sqlLogger.evictTableFromCache(this.tableNameInDDL);
+			}
+			log();
+			processCommit();
+			return result;
+		} else {
+			if (batchQueryCount == 0) {
+				log();
+			}
+			processCommit();
+			batchQueryCount = 0;
+			result = true;
+		}
+		return result;
+	}
+
+	@Override
+	public final int executeUpdate() throws SQLException {
+		execute();
+		return 0;
+	}
+
+	private final void processCommit() throws SQLException {
+		if (getConn().getUserAutoCommit() == true) {
+			getConn().commit();
+		}
+	}
+
+	@Override
+	public final int[] executeBatch() throws SQLException {
+		if (this.isDDL) {
+			execute();
+			log();
+			processCommit();
+		} else {
+			if (batchQueryCount == 0) {
+				log();
+			}
+			processCommit();
+			batchQueryCount = 0;
+		}
+		return new int[] {};
+	}
+
+    @Override
+    public ResultSet executeQuery() throws SQLException {
+		String tokens[] = sql.trim().split("\\s+");
+		if (tokens[0].equalsIgnoreCase("SELECT")) {
+			return super.executeQuery(sql);
+		}
+		throw new SQLException("executeQuery allows only SELECT statements");
+    }
+
+	@Override
+	public final void addBatch() throws SQLException {
+		//super.addBatch();
+		++batchQueryCount;
+		log();
+		//super.clearBatch();
+	}
+
+}
