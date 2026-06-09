@@ -197,17 +197,6 @@ Or copy `synclite-<version>.jar` from the platform release into your project cla
 > avoid native-library version mismatches. Non-DuckDB users can ignore
 > this dependency entirely.
 
-For the **full embedded runtime** (logger + shipper + in-process consolidator), use the fat artifact instead:
-
-```xml
-<dependency>
-    <groupId>io.synclite</groupId>
-    <artifactId>synclite-consolidator</artifactId>
-    <version><!-- latest version --></version>
-</dependency>
-```
-
-The same DuckDB note applies to the `synclite-consolidator` artifact —
 DuckDB users must add `org.duckdb:duckdb_jdbc:1.5.2.0` themselves.
 
 ### 2. Configure `synclite.conf`
