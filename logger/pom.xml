@@ -15,9 +15,49 @@
         <maven.javadoc.tags>
             JDBC, Embedded DB, RDBMS, SQLite, DuckDB, Apache Derby, H2, HyperSQL
         </maven.javadoc.tags>
+		<!--
+			Root of the sibling Rust cargo workspace. The antrun step below
+			copies any synclite_jni native libs it finds under this path
+			into the jar's META-INF/native/<classifier>/ tree. The copy is
+			best-effort (failonerror=false): a fresh checkout with no
+			Rust toolchain still builds a logger-only jar, and consumers
+			that don't need the in-process consolidator never have to
+			install Rust.
+		-->
+		<synclite.rust.target.dir>${project.basedir}/../../synclite-logger-rust/target</synclite.rust.target.dir>
+		<!--
+			Skip the cargo build of the JNI native. Set to true (or pass
+			-DskipRustRuntime=true) to produce a logger-only jar on a
+			host without a Rust toolchain. Default false: try to build,
+			tolerate failure (the antrun copy step is also best-effort).
+		-->
+		<skipRustRuntime>false</skipRustRuntime>
+		<!--
+			Default: don't exclude any tests (placeholder pattern matches no class).
+			The `skip-rust-runtime-tests` profile below overrides this to skip
+			the *TestWithConsolidator suites when -DskipRustRuntime=true is passed.
+		-->
+		<surefire.consolidator.exclude>**/__never_matches_anything__</surefire.consolidator.exclude>
 	</properties>
 
 	<build>
+		<resources>
+			<!-- Filter only synclite-native.properties so ${revision} gets substituted; everything else copied as-is. -->
+			<resource>
+				<directory>src/main/resources</directory>
+				<filtering>true</filtering>
+				<includes>
+					<include>META-INF/synclite-native.properties</include>
+				</includes>
+			</resource>
+			<resource>
+				<directory>src/main/resources</directory>
+				<filtering>false</filtering>
+				<excludes>
+					<exclude>META-INF/synclite-native.properties</exclude>
+				</excludes>
+			</resource>
+		</resources>
 		<plugins>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
@@ -41,6 +81,168 @@
 						</goals>
 						<configuration>
 							<!-- configure the plugin here -->
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+
+			<!--
+				Build the Rust JNI native (libsynclite_<rev>_jni.*) from this
+				Maven build. Requires a Rust toolchain on PATH. To skip the
+				cargo step entirely (e.g. on a host without a Rust toolchain
+				or to produce a logger-only jar), pass -DskipRustRuntime=true.
+				The antrun step further down picks up whatever the compile
+				produced.
+			-->
+			<plugin>
+				<groupId>org.codehaus.mojo</groupId>
+				<artifactId>exec-maven-plugin</artifactId>
+				<version>3.1.0</version>
+				<executions>
+					<execution>
+						<id>cargo-build-jni</id>
+						<phase>generate-resources</phase>
+						<goals><goal>exec</goal></goals>
+						<configuration>
+							<executable>cargo</executable>
+							<workingDirectory>${project.basedir}/../../synclite-logger-rust</workingDirectory>
+							<arguments>
+								<argument>build</argument>
+								<argument>--package=synclite-bindings-java</argument>
+								<argument>--release</argument>
+							</arguments>
+							<successCodes><successCode>0</successCode></successCodes>
+							<skip>${skipRustRuntime}</skip>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+
+			<!--
+				Best-effort bundling of the Rust JNI native libraries built
+				by `cargo build -p synclite-bindings-java` in the sibling
+				synclite-logger-rust workspace. The naming convention matches
+				the release zip's lib/native/ folder: libsynclite_<rev>_jni.<ext>
+				(plus _linux_x86_64 / _linux_aarch64 suffixes for cross-compiled
+				Linux variants). When this module is built standalone (no root
+				pom rename step) the antrun also accepts cargo's raw output
+				names (synclite_jni.dll, libsynclite_jni.so, libsynclite_jni.dylib)
+				and renames them to the canonical jar-internal name via mapper.
+
+				Every copy is failonerror="false" so a checkout without a Rust
+				toolchain still produces a clean logger-only synclite jar.
+				When a native lib IS present it ends up at
+				META-INF/native/<classifier>/libsynclite_<rev>_jni.<ext> inside
+				this jar, which is the same path the consolidator-side
+				NativeLoader searches.
+			-->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-antrun-plugin</artifactId>
+				<version>3.1.0</version>
+				<executions>
+					<execution>
+						<id>copy-native-libs</id>
+						<phase>generate-resources</phase>
+						<goals><goal>run</goal></goals>
+						<configuration>
+							<target>
+								<mkdir dir="${project.build.outputDirectory}/META-INF/native/windows-x64"/>
+								<mkdir dir="${project.build.outputDirectory}/META-INF/native/linux-x64"/>
+								<mkdir dir="${project.build.outputDirectory}/META-INF/native/linux-arm64"/>
+								<mkdir dir="${project.build.outputDirectory}/META-INF/native/macos-x64"/>
+								<mkdir dir="${project.build.outputDirectory}/META-INF/native/macos-arm64"/>
+								<!--
+									libsynclite_<rev>_jni.<ext>: built by
+									`cargo build -p synclite-bindings-java`, optionally renamed
+									by the parent platform pom. Each <copy> flattens to the
+									canonical jar-internal name so NativeLoader can resolve
+									it without enumerating jar entries.
+								-->
+								<copy todir="${project.build.outputDirectory}/META-INF/native/windows-x64"
+									  failonerror="false" quiet="true">
+									<fileset dir="${synclite.rust.target.dir}" erroronmissingdir="false">
+										<include name="release/libsynclite_${revision}_jni.dll"/>
+										<include name="release/synclite_jni.dll"/>
+									</fileset>
+									<mapper type="merge" to="libsynclite_${revision}_jni.dll"/>
+								</copy>
+								<copy todir="${project.build.outputDirectory}/META-INF/native/linux-x64"
+									  failonerror="false" quiet="true">
+									<fileset dir="${synclite.rust.target.dir}" erroronmissingdir="false">
+										<include name="release/libsynclite_${revision}_jni.so"/>
+										<include name="release/libsynclite_${revision}_jni_linux_x86_64.so"/>
+										<include name="x86_64-unknown-linux-gnu/release/libsynclite_jni.so"/>
+										<include name="release/libsynclite_jni.so"/>
+									</fileset>
+									<mapper type="merge" to="libsynclite_${revision}_jni.so"/>
+								</copy>
+								<copy todir="${project.build.outputDirectory}/META-INF/native/linux-arm64"
+									  failonerror="false" quiet="true">
+									<fileset dir="${synclite.rust.target.dir}" erroronmissingdir="false">
+										<include name="release/libsynclite_${revision}_jni_linux_aarch64.so"/>
+										<include name="aarch64-unknown-linux-gnu/release/libsynclite_jni.so"/>
+									</fileset>
+									<mapper type="merge" to="libsynclite_${revision}_jni.so"/>
+								</copy>
+								<copy todir="${project.build.outputDirectory}/META-INF/native/macos-x64"
+									  failonerror="false" quiet="true">
+									<fileset dir="${synclite.rust.target.dir}" erroronmissingdir="false">
+										<include name="x86_64-apple-darwin/release/libsynclite_jni.dylib"/>
+									</fileset>
+									<mapper type="merge" to="libsynclite_${revision}_jni.dylib"/>
+								</copy>
+								<copy todir="${project.build.outputDirectory}/META-INF/native/macos-arm64"
+									  failonerror="false" quiet="true">
+									<fileset dir="${synclite.rust.target.dir}" erroronmissingdir="false">
+										<include name="release/libsynclite_${revision}_jni.dylib"/>
+										<include name="release/libsynclite_jni.dylib"/>
+										<include name="aarch64-apple-darwin/release/libsynclite_jni.dylib"/>
+									</fileset>
+									<mapper type="merge" to="libsynclite_${revision}_jni.dylib"/>
+								</copy>
+								<!--
+									duckdb: prebuilt shared lib downloaded by the duckdb-rs build
+									script into target/duckdb-download/<triple>/<version>/. synclite_jni
+									dynamically links against it, so we ship it alongside and the
+									Java NativeLoader extracts + System.load()s it before synclite_jni.
+								-->
+								<copy todir="${project.build.outputDirectory}/META-INF/native/windows-x64"
+									  failonerror="false" quiet="true">
+									<fileset dir="${synclite.rust.target.dir}" erroronmissingdir="false">
+										<include name="duckdb-download/x86_64-pc-windows-msvc/*/duckdb.dll"/>
+									</fileset>
+									<mapper type="merge" to="duckdb.dll"/>
+								</copy>
+								<copy todir="${project.build.outputDirectory}/META-INF/native/linux-x64"
+									  failonerror="false" quiet="true">
+									<fileset dir="${synclite.rust.target.dir}" erroronmissingdir="false">
+										<include name="duckdb-download/x86_64-unknown-linux-gnu/*/libduckdb.so"/>
+									</fileset>
+									<mapper type="merge" to="libduckdb.so"/>
+								</copy>
+								<copy todir="${project.build.outputDirectory}/META-INF/native/linux-arm64"
+									  failonerror="false" quiet="true">
+									<fileset dir="${synclite.rust.target.dir}" erroronmissingdir="false">
+										<include name="duckdb-download/aarch64-unknown-linux-gnu/*/libduckdb.so"/>
+									</fileset>
+									<mapper type="merge" to="libduckdb.so"/>
+								</copy>
+								<copy todir="${project.build.outputDirectory}/META-INF/native/macos-x64"
+									  failonerror="false" quiet="true">
+									<fileset dir="${synclite.rust.target.dir}" erroronmissingdir="false">
+										<include name="duckdb-download/x86_64-apple-darwin/*/libduckdb.dylib"/>
+									</fileset>
+									<mapper type="merge" to="libduckdb.dylib"/>
+								</copy>
+								<copy todir="${project.build.outputDirectory}/META-INF/native/macos-arm64"
+									  failonerror="false" quiet="true">
+									<fileset dir="${synclite.rust.target.dir}" erroronmissingdir="false">
+										<include name="duckdb-download/aarch64-apple-darwin/*/libduckdb.dylib"/>
+									</fileset>
+									<mapper type="merge" to="libduckdb.dylib"/>
+								</copy>
+							</target>
 						</configuration>
 					</execution>
 				</executions>
@@ -84,6 +286,29 @@
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-surefire-plugin</artifactId>
 				<version>3.2.5</version>
+				<configuration>
+					<!--
+						Surefire's default include patterns only match *Test.java / *Tests.java /
+						*TestCase.java / Test*.java. The consolidator-flavored suites are named
+						*TestWithConsolidator.java, so they must be added explicitly or they are
+						silently skipped during normal discovery.
+
+						When the Rust JNI runtime is not built (-DskipRustRuntime=true) the
+						*TestWithConsolidator suites cannot run because they bind to the
+						in-process native consolidator; the skip-rust-runtime-tests profile
+						overrides surefire.consolidator.exclude to exclude them in that case.
+					-->
+					<includes>
+						<include>**/Test*.java</include>
+						<include>**/*Test.java</include>
+						<include>**/*Tests.java</include>
+						<include>**/*TestCase.java</include>
+						<include>**/*TestWithConsolidator.java</include>
+					</includes>
+					<excludes combine.children="append">
+						<exclude>${surefire.consolidator.exclude}</exclude>
+					</excludes>
+				</configuration>
 			</plugin>
 		</plugins>
 	</build>
@@ -94,6 +319,18 @@
 			<groupId>org.junit.jupiter</groupId>
 			<artifactId>junit-jupiter</artifactId>
 			<version>5.10.2</version>
+			<scope>test</scope>
+		</dependency>
+		<!--
+			LauncherSessionListener (TestJobRootCleaner) lives here and is wired
+			via META-INF/services. Surefire pulls in junit-platform-launcher
+			transitively, but declare it explicitly so the ServiceLoader API on
+			the test classpath at compile time too.
+		-->
+		<dependency>
+			<groupId>org.junit.platform</groupId>
+			<artifactId>junit-platform-launcher</artifactId>
+			<version>1.10.2</version>
 			<scope>test</scope>
 		</dependency>
 
@@ -167,10 +404,25 @@
 		</dependency>
 		
 		<!-- https://mvnrepository.com/artifact/org.duckdb/duckdb_jdbc -->
+		<!--
+			DuckDB's JDBC driver bundles native libraries (~50+ MB) which
+			would inflate the synclite jar-with-dependencies. We mark it
+			'provided' so it stays on the compile/test classpath but is
+			excluded from the assembled fat jar and is NOT propagated as
+			a transitive dependency. Applications that use a DuckDB
+			device must add this dependency themselves:
+
+				<dependency>
+				    <groupId>org.duckdb</groupId>
+				    <artifactId>duckdb_jdbc</artifactId>
+				    <version>1.5.2.0</version>
+				</dependency>
+		-->
 		<dependency>
 		    <groupId>org.duckdb</groupId>
 		    <artifactId>duckdb_jdbc</artifactId>
 		    <version>1.5.2.0</version>
+		    <scope>provided</scope>
 		</dependency>		
 
 		<!-- https://mvnrepository.com/artifact/org.apache.derby/derby -->
@@ -195,4 +447,25 @@
 		</dependency>
 
 	</dependencies>
+
+	<profiles>
+		<!--
+			Activated automatically by `-DskipRustRuntime=true`. Sets the
+			surefire exclude pattern so the *TestWithConsolidator suites
+			(which need the Rust JNI runtime) are skipped, leaving only
+			the logger-only (javalogger) test set running.
+		-->
+		<profile>
+			<id>skip-rust-runtime-tests</id>
+			<activation>
+				<property>
+					<name>skipRustRuntime</name>
+					<value>true</value>
+				</property>
+			</activation>
+			<properties>
+				<surefire.consolidator.exclude>**/*TestWithConsolidator.java</surefire.consolidator.exclude>
+			</properties>
+		</profile>
+	</profiles>
 </project>

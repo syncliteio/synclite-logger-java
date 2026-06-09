@@ -1,0 +1,144 @@
+/*
+ * Copyright (c) 2024 mahendra.chavan@synclite.io, all rights reserved.
+ *
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.  You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License
+ * is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+ * or implied.  See the License for the specific language governing permissions and limitations
+ * under the License.
+ *
+ */
+
+package io.synclite;
+
+import java.nio.file.Path;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+
+final class MetadataManager {
+    /** Bump when on-disk metadata layout/semantics change in a non-back-compatible way.
+     *  Stored in the `metadata` table under {@link #SYNCLITE_METADATA_VERSION_KEY} so a
+     *  future logger version can detect an older store and run a migration routine. */
+    static final long SYNCLITE_METADATA_VERSION = 1L;
+    static final String SYNCLITE_METADATA_VERSION_KEY = "synclite_metadata_version";
+
+    private Path metadataFilePath;
+    private Connection metadataTableConn = null;
+    private static final String insertMetadataSql = "INSERT INTO metadata VALUES (?,?)";
+    private PreparedStatement insertMetadataStmt = null;
+    private static final String updateMetadataSql = "UPDATE metadata SET value = ? WHERE key = ?";
+    private PreparedStatement updateMetadataStmt = null;
+    private static final String deleteMetadataSql = "DELETE FROM metadata WHERE key = ?";
+    private PreparedStatement deleteMetadataStmt = null;
+    private static final String selectMetadataSql = "SELECT value FROM metadata WHERE key = ?";
+    private PreparedStatement selectMetadataStmt = null;
+
+    MetadataManager(Path metadataFilePath) throws SQLException {
+        this.metadataFilePath = metadataFilePath;
+        try {
+	        metadataTableConn = DriverManager.getConnection("jdbc:sqlite:" + metadataFilePath);
+	        initializeMetadataTable();
+	        insertMetadataStmt = metadataTableConn.prepareStatement(insertMetadataSql);
+	        updateMetadataStmt = metadataTableConn.prepareStatement(updateMetadataSql);
+	        deleteMetadataStmt = metadataTableConn.prepareStatement(deleteMetadataSql);
+	        selectMetadataStmt = metadataTableConn.prepareStatement(selectMetadataSql);
+        } catch (SQLException e) {
+        	throw new SQLException("Failed to open/write into the metadata file at path : " + metadataFilePath, e);
+        }
+    }
+
+    final Path getMetadataFilePath() {
+        return this.metadataFilePath;
+    }
+
+    private void initializeMetadataTable() throws SQLException {
+        try (Statement stmt = metadataTableConn.createStatement()) {
+        	stmt.execute("pragma page_size=512");
+            stmt.execute("create table if not exists metadata(key text, value text);");
+            seedMetadataVersionIfAbsent(stmt);
+        } catch (SQLException e) {
+        	throw new SQLException("Failed to initialize metadata table in the metadata file : " + metadataFilePath, e);
+        }
+    }
+
+    private void seedMetadataVersionIfAbsent(Statement stmt) throws SQLException {
+        try (ResultSet rs = stmt.executeQuery(
+                "SELECT value FROM metadata WHERE key = '" + SYNCLITE_METADATA_VERSION_KEY + "'")) {
+            if (rs.next()) {
+                return;
+            }
+        }
+        stmt.execute("INSERT INTO metadata(key, value) VALUES('"
+                + SYNCLITE_METADATA_VERSION_KEY + "', '" + SYNCLITE_METADATA_VERSION + "')");
+    }
+
+    void close() throws SQLException {
+    	if (metadataTableConn != null) {
+    		try {
+    			metadataTableConn.close();
+    		} catch (SQLException e) {
+    			//Suppress
+    		}
+			metadataTableConn = null;
+    	}
+    }  
+
+    final synchronized void replaceProperty(String key, Object value) throws SQLException {
+        deleteMetadataStmt.setString(1, key);
+        insertMetadataStmt.setString(1, key);
+        insertMetadataStmt.setObject(2, value);
+        metadataTableConn.setAutoCommit(false);
+        deleteMetadataStmt.execute();
+        insertMetadataStmt.execute();
+        metadataTableConn.commit();
+        metadataTableConn.setAutoCommit(true);
+    }
+
+    final synchronized void insertProperty(String key, Object value) throws SQLException {
+    	insertMetadataStmt.setString(1, key);
+    	insertMetadataStmt.setObject(2, value);
+    	insertMetadataStmt.execute();
+    }
+
+    final synchronized void updateProperty(String key, Object value) throws SQLException {
+    	updateMetadataStmt.setString(2, key);
+    	updateMetadataStmt.setObject(1, value);
+    	updateMetadataStmt.execute();
+    }
+
+    final String getStringProperty(String key) throws SQLException {
+        selectMetadataStmt.setString(1, key);
+        try (ResultSet rs = selectMetadataStmt.executeQuery()) {
+            if (rs.next()) {
+                return rs.getString(1);
+            }
+        };
+        return null;
+    }
+
+    final Long getLongProperty(String key) throws SQLException {
+        selectMetadataStmt.setString(1, key);
+        try (ResultSet rs = selectMetadataStmt.executeQuery()) {
+            if (rs.next()) {
+                return rs.getLong(1);
+            }
+        };
+        return null;
+    }
+
+	public void backupMetadataFile(Path metadataFileBackupPath) throws SQLException {
+		try (Statement stmt = metadataTableConn.createStatement()) {
+			stmt.executeUpdate("BACKUP TO '" + metadataFileBackupPath + "'");
+		}
+	}
+	
+}
