@@ -57,7 +57,6 @@ public class SyncLiteOptions {
 	private Path encryptionKeyFile = null;
 	private List<String> includeTables = null;
 	private List<String> excludeTables = null;
-	private long databaseId = -1;
 	private String uuid = null;
 	private DeviceType deviceType;
 	private Logger tracer;
@@ -83,7 +82,6 @@ public class SyncLiteOptions {
 		copy.disableAsyncLoggingForTxnDevice = this.disableAsyncLoggingForTxnDevice;
 		copy.enableAsyncLoggingForAppenderDevice = this.enableAsyncLoggingForAppenderDevice;
 		copy.encryptionKeyFile = this.encryptionKeyFile;
-		copy.databaseId = this.databaseId;
 		for (Map.Entry<Integer, DestinationType> entry : this.destTypes.entrySet()) {
 			copy.destTypes.put(entry.getKey(), entry.getValue());
 		}
@@ -268,14 +266,6 @@ public class SyncLiteOptions {
 	
 	public void setExternalCommandHandler(String handler) {
 		this.externalCommandHandler = handler;
-	}
-
-	long getDatabaseId() throws SQLException {
-		return this.databaseId;
-	}
-
-	void setDatabaseId(long deviceDBID) throws SQLException {
-		this.databaseId = deviceDBID;
 	}
 
 	void setUUID(String deviceUUID) throws SQLException {

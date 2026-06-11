@@ -76,7 +76,6 @@ abstract class SQLLogger extends Thread {
 	protected String restartTxnFate;
 	protected String restartLoggedSQL;
 	protected long backupShipped;
-	protected long databaseID;
 	protected long lastProcessedRequestID;
 	protected long lastProcessingRequestID;
 	protected String lastProcessingCommand;
@@ -187,18 +186,18 @@ abstract class SQLLogger extends Thread {
 		//Else we create multiple LogShippers + LogCleaner
 		//
 		if ((options.getNumDestinations() == 1)) {
-			LogMover mover = new LogMover(this.dbPath, this.databaseID, getWriteArchiveName(), logSegmentPlacer, metadataMgr, this.options, 1, this.tracer);
+			LogMover mover = new LogMover(this.dbPath, getWriteArchiveName(), logSegmentPlacer, metadataMgr, this.options, 1, this.tracer);
 			logShippers.add(mover);
 			mover.setLogSegmentSequenceNumber(this.logSegmentSequenceNumber);
 			mover.setDataFileSequenceNumber(this.dataFileSequenceNumber);
 		} else {
 			for (Integer i=1 ; i <= options.getNumDestinations(); ++i) {
-				LogShipper shipper = new LogShipper(this.dbPath, this.databaseID, getWriteArchiveName(), logSegmentPlacer, this.metadataMgr, this.options, i, this.tracer);
+				LogShipper shipper = new LogShipper(this.dbPath, getWriteArchiveName(), logSegmentPlacer, this.metadataMgr, this.options, i, this.tracer);
 				logShippers.add(shipper);
 				shipper.setLogSegmentSequenceNumber(this.logSegmentSequenceNumber);
 				shipper.setDataFileSequenceNumber(this.dataFileSequenceNumber);
 			}
-			logCleaner = new LogCleaner(this.dbPath, this.databaseID, this.logShippers, this.logSegmentPlacer, metadataMgr, this.options, this.tracer);			
+			logCleaner = new LogCleaner(this.dbPath, this.logShippers, this.logSegmentPlacer, metadataMgr, this.options, this.tracer);			
 		}
 	}
 
@@ -351,19 +350,6 @@ abstract class SQLLogger extends Thread {
 			metadataMgr.insertProperty("data_file_sequence_number", this.dataFileSequenceNumber);
 		}
 
-		longVal = metadataMgr.getLongProperty("database_id");
-		if (longVal != null) {
-			this.databaseID = longVal;
-		} else {
-			if (options.getDatabaseId() != -1) {
-				this.databaseID = options.getDatabaseId();
-			} else {
-				this.databaseID = 0;
-			}
-			metadataMgr.insertProperty("database_id", this.databaseID);
-		}
-		options.setDatabaseId(this.databaseID);
-
 		longVal = metadataMgr.getLongProperty("last_processed_request_id");
 		if (longVal != null) {
 			this.lastProcessedRequestID = longVal;
@@ -467,7 +453,7 @@ abstract class SQLLogger extends Thread {
 	}
 
 	private final void initLogSegment(long seqNum) throws SQLException {
-		this.logPath = logSegmentPlacer.getLogSegmentPath(this.dbPath, this.databaseID, seqNum);
+		this.logPath = logSegmentPlacer.getLogSegmentPath(this.dbPath, seqNum);
 		String url = "jdbc:sqlite:" + logPath;
 		logTableConn = DriverManager.getConnection(url);
 		inlinedArgCnt = options.getLogMaxInlinedArgs();
@@ -850,7 +836,7 @@ abstract class SQLLogger extends Thread {
 	final Path logDataFile(Path sourceFilePath) throws SQLException {
 		try {
 			long seqNum = dataFileSequenceNumber.get() + 1;
-			Path dataFile = logSegmentPlacer.getDataFilePath(this.dbPath, this.databaseID, seqNum);
+			Path dataFile = logSegmentPlacer.getDataFilePath(this.dbPath, seqNum);
 			//Copy the supplied sourceFilePath to dataFile		
 			Files.copy(sourceFilePath, dataFile);
 			dataFileSequenceNumber.addAndGet(1L);

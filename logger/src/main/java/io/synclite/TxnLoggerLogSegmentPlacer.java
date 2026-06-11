@@ -24,13 +24,13 @@ public class TxnLoggerLogSegmentPlacer extends LogSegmentPlacer {
 	}
 
 	@Override
-	protected Path getLogSegmentPath(Path dbPath, long dbID, long seqNum) {
-		return SQLite.getLogSegmentPath(dbPath, dbID, seqNum);
+	protected Path getLogSegmentPath(Path dbPath, long seqNum) {
+		return SQLite.getLogSegmentPath(dbPath, seqNum);
 	}
 
 	@Override
-	protected Path getDataFilePath(Path dbPath, long dbID, long seqNum) {
-		return SQLite.getDataFilePath(dbPath, dbID, seqNum);
+	protected Path getDataFilePath(Path dbPath, long seqNum) {
+		return SQLite.getDataFilePath(dbPath, seqNum);
 	}
 
 	@Override
