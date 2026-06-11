@@ -87,7 +87,138 @@ SyncLite devices fall into three primary categories. Wherever the docs talk abou
 
 - **Streaming Device** — The `STREAMING` device models append-only ingestion with `SyncLiteStream` semantics (fluent `insert` / `insertBatch`). It is optimized for high-throughput event capture and does not support UPDATE/DELETE semantics.
 
+> **Which device should I pick?** Store devices (`*_STORE`) and the `STREAMING` device emit pre-formed row events that the consolidator applies directly to the destination — no SQL-log parsing or CDC-deduction step on the apply path, so they deliver the highest end-to-end consolidation throughput. Reach for a SQL device (`SQLITE`, `DUCKDB`, `DERBY`, `H2`, `HYPERSQL`) when your app actually needs raw SQL, JOINs, multi-statement transactions in one connection, or ad-hoc DDL beyond the schema-evolution the Store API handles for you. For a brand-new app, `SQLITE_STORE` is usually the fastest *and* simplest starting point.
+
 Note: internal device types such as Appender and DBLogger remain implementation details and are intentionally omitted from user-facing documentation.
+
+## Prerequisites
+
+> **Architecture support.** SyncLite is **64-bit only** — `x86_64` and `aarch64` on Windows / Linux / macOS. 32-bit hosts are not supported because the embedded Rust runtime depends on the DuckDB engine, which requires a 64-bit host. This applies whether you build with the Rust runtime bundled (default) or as a logger-only jar (`-DskipRustRuntime=true`) — the Java logger itself targets 64-bit JVMs.
+
+| Tool | Version | When you need it |
+|---|---|---|
+| **JDK** | 25 | Always. The project standardizes on OpenJDK 25 (the `bin/deploy.sh` / `bin/deploy.bat` scripts download it automatically for platform installs). The jar itself is compiled with `--release=11` for broad runtime compatibility, but the build requires JDK 25. |
+| **Maven** | 3.6 or newer (3.8.6+ recommended; tested with 3.9.x) | Building from source. |
+| **Rust toolchain** (`cargo`) | stable (pinned via [synclite-logger-rust/rust-toolchain.toml](../synclite-logger-rust/rust-toolchain.toml)) | Only for the default build that bundles the in-process consolidator native. Skip with `-DskipRustRuntime=true`. |
+| [`cargo-zigbuild`](https://github.com/rust-cross/cargo-zigbuild) + [Zig](https://ziglang.org/download/) | latest stable | **Not needed for this module on its own.** Only required when building from the SyncLite repo root and you want the cross-compiled Linux `x86_64` / `aarch64` `.so` cdylibs bundled into the jar alongside the host-arch native. The standalone `mvn install` here only builds the host-arch cdylib via `cargo build` — no zig involved. |
+| **DuckDB JDBC driver** | 1.5.2.0 | Only if your app uses any DuckDB device. Add as a separate dependency in your app pom; not bundled. |
+
+> On a host without `cargo`, the build still tolerates a missing Rust toolchain — the cargo step and the native-bundling step are best-effort. Passing `-DskipRustRuntime=true` makes the skip explicit and silences the failure log.
+>
+> To install Rust + zig for a full multi-arch build from the repo root:
+>
+> ```bash
+> # Rust (https://rustup.rs/)
+> curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+>
+> # cargo-zigbuild + zig (only for repo-root multi-arch Linux builds)
+> cargo install cargo-zigbuild
+> # zig must be on PATH — download from https://ziglang.org/download/
+> ```
+
+## Build
+
+A single Maven module (`logger/`) produces a single artifact: `synclite-<version>.jar`. The same jar covers both deployment modes — when a Rust toolchain is present the build also bundles the in-process consolidator native (`synclite_jni`); when it isn't, the jar still builds cleanly and contains only the Java logger.
+
+### With the Rust runtime (default)
+
+Requires `cargo` on `PATH`. The pom invokes `cargo build -p synclite-bindings-java --release` against [synclite-logger-rust/](../synclite-logger-rust/) and bundles the resulting `synclite_jni` cdylib into the jar at `META-INF/native/<os-arch>/libsynclite_<rev>_jni.<ext>`.
+
+```bash
+cd synclite-logger-java/logger
+mvn -Drevision=oss clean install
+```
+
+Output: `logger/target/synclite-oss.jar`. The same jar runs in either mode at runtime — the embedded native is used when an in-process consolidator is configured, otherwise the pure-Java logger + shipper path runs.
+
+### Without the Rust runtime (logger-only)
+
+Pass `-DskipRustRuntime=true` if you don't have a Rust toolchain (or just want a faster build). The cargo step and the native-bundling step are skipped; the jar contains only the Java logger.
+
+```bash
+cd synclite-logger-java/logger
+mvn -Drevision=oss -DskipRustRuntime=true clean install
+```
+
+The `*TestWithConsolidator` JUnit suites are auto-skipped under this flag (they need the in-process native).
+
+### Pre-building the Rust native explicitly
+
+For cross-compiled Linux / macOS targets, build the cdylib yourself first; the antrun step will pick up whatever's already in `synclite-logger-rust/target/`:
+
+```bash
+cd synclite-logger-rust
+cargo build -p synclite-bindings-java --release
+# optionally for other targets:
+cargo build -p synclite-bindings-java --release --target <triple>
+
+cd ../synclite-logger-java/logger
+mvn -Drevision=oss clean install
+```
+
+### Skipping tests
+
+Append `-DskipTests` to skip running JUnit, or `-Dmaven.test.skip=true` to skip test compilation too:
+
+```bash
+mvn -Drevision=oss -DskipTests clean install
+mvn -Drevision=oss -Dmaven.test.skip=true clean install
+```
+
+### Build accelerators
+
+None of these are required — they only speed up local iteration and CI.
+
+- **Parallel reactor build** — Maven happily builds the logger module in parallel with its sibling modules when invoked from the repo root:
+
+  ```bash
+  # 1 thread per CPU core
+  mvn -T 1C -Drevision=oss -DskipTests clean install
+  ```
+
+  Inside the single `logger/` module the speed-up is small (it's one module), but the flag is harmless and useful when you're building the full reactor.
+
+- **Skip the Rust native** — the cargo + antrun steps dominate a clean build. Pass `-DskipRustRuntime=true` for the fastest possible logger-only jar (see [Without the Rust runtime](#without-the-rust-runtime-logger-only) above).
+
+- **Skip tests** — `-DskipTests` (run no tests) or `-Dmaven.test.skip=true` (don't even compile them).
+
+- **Offline mode** — once `~/.m2` is warm, `-o` (or `--offline`) avoids Central round-trips on every plugin / dependency lookup.
+
+- **Incremental compilation** — enabled by default in `maven-compiler-plugin` 3.x; nothing to do.
+
+- **[Maven Daemon (`mvnd`)](https://github.com/apache/maven-mvnd)** — long-running JVM, parallel reactor by default, typically 2–3× faster than vanilla `mvn` on warm caches:
+
+  ```bash
+  mvnd -Drevision=oss -DskipTests clean install
+  ```
+
+- **Rust-side `sccache`** — the Rust native build dominates clean builds. Wire up [sccache](https://github.com/mozilla/sccache) on the host (it's transparent to Maven):
+
+  ```bash
+  cargo install sccache
+  export RUSTC_WRAPPER=sccache            # bash / zsh
+  $env:RUSTC_WRAPPER = "sccache"          # PowerShell
+  ```
+
+- **Pre-built Rust cdylib** — if you build the Rust workspace yourself first (see [Pre-building the Rust native explicitly](#pre-building-the-rust-native-explicitly) above), then run `mvn -Drevision=oss -DskipRustRuntime=true clean install`, the antrun bundling step still picks up whatever's already in `synclite-logger-rust/target/release/`. This lets you cache the Rust artifacts independently in CI.
+
+- **`MAVEN_OPTS` heap tuning** — for the full reactor on a fat box, give Maven more heap to avoid GC churn:
+
+  ```bash
+  export MAVEN_OPTS="-Xmx4g"
+  ```
+
+### Building from the repo root (full reactor)
+
+The repo-root build adds one flag on top of everything above: **`-DskipRustCrossCompile=true`** skips the two Linux cross-compile cargo runs (`x86_64-unknown-linux-gnu` + `aarch64-unknown-linux-gnu`) so you don't need `cargo-zigbuild` + `zig` on `PATH`. The host-arch cdylib is still built and bundled. The flag is root-pom only — inside this module use `-DskipRustRuntime=true` instead.
+
+```bash
+# Fastest reactor build on a host without zig — host-arch cdylib only.
+mvn -Drevision=oss -DskipRustCrossCompile=true -DskipTests clean install
+```
+
+For the full platform / runtime zips, see the [top-level build instructions](../README.md#building-from-source) in the SyncLite repo root.
+
 ## Quick Start
 
 ### End-to-end PostgreSQL sample (30 seconds)
@@ -197,19 +328,20 @@ Or copy `synclite-<version>.jar` from the platform release into your project cla
 > avoid native-library version mismatches. Non-DuckDB users can ignore
 > this dependency entirely.
 
-DuckDB users must add `org.duckdb:duckdb_jdbc:1.5.2.0` themselves.
+The **central Consolidator** that drains staged segments into your destination is a separate component — a Tomcat WAR deployed from the platform release, not a Maven dependency. See [SyncLite Consolidator](../synclite-consolidator/) for setup.
 
 ### 2. Configure `synclite.conf`
 
-A full sample config file is provided at `logger/src/main/resources/synclite.conf`. At minimum, set:
+`synclite.conf` is **optional**. With no config file at all, SyncLite uses sensible defaults out of the box — segments and consolidator work go under `<user-home>/synclite/job1/` (`stageDir/` for staged segments, `workDir/` for consolidator state). The device type comes from which class you call `initialize` on (`SQLite`, `DuckDB`, `Streaming`, …) — no `device-type=` key needed.
+
+A full sample config covering every tunable lives at [`logger/src/main/resources/synclite.conf`](logger/src/main/resources/synclite.conf). Drop in a file only when you need to override a default — for example, a custom stage path:
 
 ```properties
-# Where to write the local sync logs (staging directory)
-local-data-stage-directory=<path/to/stage>
-
-# Where the final destination is (can also be configured in Consolidator UI)
-device-stage-type=SQLITE
+# Optional — override the default <user-home>/synclite/job1/stageDir
+local-data-stage-directory=/var/lib/myapp/synclite-stage
 ```
+
+Destination wiring (`dst-type-1`, `dst-connection-string-1`, mappers, sync mode, Prometheus, etc.) goes in the same file when you're using the in-process consolidator. See the sample for the full key reference.
 
 ### 3. Initialize and use in Java
 
@@ -377,7 +509,7 @@ The `Jedis.builder(SyncLiteStore)` overload is available when the application ma
 
 ## Non-Java Runtimes
 
-The Java SDK is JVM-only. For **Python, C/C++, Go, Ruby, Node.js, Rust** — anything that can call a C ABI — use the [SyncLite Rust runtime](../synclite-logger-rust/) which packages the same logger + embedded consolidator behind a C ABI plus PyO3 bindings. Python samples live in [`synclite-code-samples/synclite-logger/python/`](../synclite-code-samples/synclite-logger/python/).
+The Java SDK is JVM-only. For **Python, C/C++, Go, Ruby, Node.js, Rust** — anything that can call a C ABI — use the [SyncLite Rust runtime](../synclite-logger-rust/) which packages the same logger + embedded consolidator behind a stable C ABI. Python users get a dependency-free ctypes wrapper today (`lib/python/synclite.py`) and the richer `synclite-logger-python` PyO3 wheel is on the roadmap. Python samples live in [`synclite-code-samples/synclite-runtime/python/`](../synclite-code-samples/synclite-runtime/python/).
 
 ## Code Samples
 
@@ -395,7 +527,7 @@ samples/
 └─ SyncLiteKafkaProduceApp.java    # Kafka-style producer facade
 ```
 
-Python samples live under [`synclite-code-samples/synclite-logger/python/`](../synclite-code-samples/synclite-logger/python/).
+Python samples live under [`synclite-code-samples/synclite-runtime/python/`](../synclite-code-samples/synclite-runtime/python/).
 
 ## Staging Storages Supported
 
@@ -409,52 +541,6 @@ Python samples live under [`synclite-code-samples/synclite-logger/python/`](../s
 | Microsoft OneDrive | Enterprise cloud share |
 | Google Drive | Personal/workspace cloud share |
 | NFS / Network share | LAN-level sharing |
-
-## Build
-
-A single Maven module (`logger/`) produces a single artifact: `synclite-<version>.jar`. The same jar covers both deployment modes — when a Rust toolchain is present the build also bundles the in-process consolidator native (`synclite_jni`); when it isn't, the jar still builds cleanly and contains only the Java logger.
-
-```bash
-cd synclite-logger-java/logger
-mvn -Drevision=oss clean install
-```
-
-Output: `logger/target/synclite-oss.jar`.
-
-### Skipping the Rust build
-
-If you don't have a Rust toolchain (or only need the logger-only jar), pass `-DskipRustRuntime=true`:
-
-```bash
-mvn -Drevision=oss -DskipRustRuntime=true clean install
-```
-
-Without this flag the build still tolerates a missing `cargo` — the cargo step and the native-bundling antrun step are both best-effort (`failOnError=false`). The flag just makes the skip explicit and silences the failure log.
-
-### Building the Rust native explicitly
-
-The pom invokes `cargo build -p synclite-bindings-java --release` against [synclite-logger-rust/](../synclite-logger-rust/) automatically. To pre-build (e.g. cross-compiled Linux/macOS targets), run it yourself first — the antrun step will pick up whatever's already in `synclite-logger-rust/target/`:
-
-```bash
-cd synclite-logger-rust
-cargo build -p synclite-bindings-java --release
-# optionally for other targets:
-cargo build -p synclite-bindings-java --release --target <triple>
-
-cd ../synclite-logger-java/logger
-mvn -Drevision=oss clean install
-```
-
-The native ends up at `META-INF/native/<os-arch>/libsynclite_<rev>_jni.<ext>` inside the jar; `NativeLoader` resolves it at runtime from the classpath.
-
-### Skipping tests
-
-Append `-DskipTests` to skip running JUnit, or `-Dmaven.test.skip=true` to skip test compilation too:
-
-```bash
-mvn -Drevision=oss -DskipTests clean install
-mvn -Drevision=oss -Dmaven.test.skip=true clean install
-```
 
 ## Related Components
 

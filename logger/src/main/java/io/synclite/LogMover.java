@@ -23,9 +23,9 @@ import org.apache.log4j.Logger;
 
 public class LogMover extends LogShipper {
 
-	public LogMover(Path dbPath, long databaseID, String writeArchieveName, LogSegmentPlacer logSegmentPlacer, MetadataManager metadataMgr,
+	public LogMover(Path dbPath, String writeArchieveName, LogSegmentPlacer logSegmentPlacer, MetadataManager metadataMgr,
 			SyncLiteOptions options, Integer destIndex, Logger tracer) throws SQLException {
-		super(dbPath, databaseID, writeArchieveName, logSegmentPlacer, metadataMgr, options, destIndex, tracer);
+		super(dbPath, writeArchieveName, logSegmentPlacer, metadataMgr, options, destIndex, tracer);
 	}
 
 	@Override

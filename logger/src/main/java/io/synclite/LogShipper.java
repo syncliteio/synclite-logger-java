@@ -33,7 +33,6 @@ class LogShipper {
     protected final ConcurrentHashMap<String, Long> clientCommands = new ConcurrentHashMap<String, Long>();
     protected final Path dbPath;
     protected final Path syncLiteDirPath;
-    protected final long databaseID;
     protected final String writeArchieveName;
     protected final Path writeArchievePath;
     protected final FSArchiver archiver;
@@ -49,11 +48,10 @@ class LogShipper {
     protected final Logger tracer;
     private boolean copyTxnFiles = false;
 
-    LogShipper(Path dbPath, long databaseID, String writeArchieveName, LogSegmentPlacer logSegmentPlacer, MetadataManager metadataMgr, SyncLiteOptions options, Integer destIndex, Logger tracer) throws SQLException {
+    LogShipper(Path dbPath, String writeArchieveName, LogSegmentPlacer logSegmentPlacer, MetadataManager metadataMgr, SyncLiteOptions options, Integer destIndex, Logger tracer) throws SQLException {
     	this.destIndex = destIndex;
         this.dbPath = dbPath;
         this.syncLiteDirPath = Path.of(this.dbPath + ".synclite");
-        this.databaseID = databaseID;
         this.writeArchieveName = writeArchieveName;
         this.metadataMgr = metadataMgr;
         this.writeArchievePath = Path.of(options.getLocalDataStageDirectory(destIndex).toString(), this.writeArchieveName + "/");
@@ -142,7 +140,7 @@ class LogShipper {
             boolean moved = false;
             long shippedUpto = -1;
             for (long i = currentShippedDataFileSequenceNumber + 1; i <= currentDataFileSequenceNumber; ++i) {
-                Path dataFilePath = logSegmentPlacer.getDataFilePath(this.dbPath, this.databaseID, i);
+                Path dataFilePath = logSegmentPlacer.getDataFilePath(this.dbPath, i);
                 doShip(dataFilePath);
                 moved = true;
                 shippedUpto = i;
@@ -154,7 +152,7 @@ class LogShipper {
                 
                 //Cleanup shipped data files
                 for (long i = currentShippedDataFileSequenceNumber + 1; i <= shippedUpto; ++i) {
-                    Path dataFilePath = logSegmentPlacer.getDataFilePath(this.dbPath, this.databaseID, i);
+                    Path dataFilePath = logSegmentPlacer.getDataFilePath(this.dbPath, i);
                 	doClean(dataFilePath);
                 }                
             }
@@ -181,7 +179,7 @@ class LogShipper {
                         }
                 	}
                 }
-            	Path logFilePath = logSegmentPlacer.getLogSegmentPath(this.dbPath, this.databaseID, i);
+            	Path logFilePath = logSegmentPlacer.getLogSegmentPath(this.dbPath, i);
                 doShip(logFilePath);
                 moved = true;
                 shippedUpto = i;
@@ -200,7 +198,7 @@ class LogShipper {
                             }
                         }
                 	}                	
-                	Path logFilePath = logSegmentPlacer.getLogSegmentPath(this.dbPath, this.databaseID, i);
+                	Path logFilePath = logSegmentPlacer.getLogSegmentPath(this.dbPath, i);
                 	doClean(logFilePath);
                 }
             }

@@ -30,7 +30,6 @@ import org.apache.log4j.Logger;
 public class LogCleaner {
 
 	private final Path dbPath;
-	private final long databaseID;
 	private final List<LogShipper> logShippers;
 	private final AtomicLong cleanedLogSegmentSequenceNumber = new AtomicLong(-1);
 	private final AtomicLong cleanedDataFileSequenceNumber = new AtomicLong(-1);
@@ -39,9 +38,8 @@ public class LogCleaner {
 	private final LogSegmentPlacer logSegmentPlacer;
 	private final Logger tracer;
 
-	LogCleaner(Path dbPath, long databaseID, List<LogShipper> logShippers, LogSegmentPlacer logSegmentPlacer, MetadataManager metadataMgr, SyncLiteOptions options, Logger tracer) throws SQLException  {
+	LogCleaner(Path dbPath, List<LogShipper> logShippers, LogSegmentPlacer logSegmentPlacer, MetadataManager metadataMgr, SyncLiteOptions options, Logger tracer) throws SQLException  {
 		this.dbPath = dbPath;
-		this.databaseID = databaseID;
 		this.logShippers = logShippers;
 		this.logSegmentPlacer = logSegmentPlacer;
 		this.metadataMgr = metadataMgr;
@@ -81,7 +79,7 @@ public class LogCleaner {
 
 			boolean cleaned = false;
 			for (long seq = cleanedLogSegmentSequenceNumber.get() + 1; seq <= cleanLogsUpto; ++seq) {
-				Path logFilePath = logSegmentPlacer.getLogSegmentPath(this.dbPath, this.databaseID, seq);
+				Path logFilePath = logSegmentPlacer.getLogSegmentPath(this.dbPath, seq);
 				if (Files.exists(logFilePath)) {
 					Files.delete(logFilePath);
 				}
@@ -110,7 +108,7 @@ public class LogCleaner {
 
 			boolean cleaned = false;
 			for (long seq = cleanedDataFileSequenceNumber.get() + 1; seq <= cleanDataFilesUpto; ++seq) {
-				Path dataFilePath = logSegmentPlacer.getDataFilePath(this.dbPath, this.databaseID, seq);
+				Path dataFilePath = logSegmentPlacer.getDataFilePath(this.dbPath, seq);
 				if (Files.exists(dataFilePath)) {
 					Files.delete(dataFilePath);
 				}

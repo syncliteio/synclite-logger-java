@@ -456,8 +456,6 @@ public class SyncLite extends org.sqlite.JDBC {
 	public static final void reSynchronizeDevice(DeviceType deviceType, Path dbPath) throws SQLException {
 		SyncLiteOptions options = SQLLogger.getSyncLiteOptions(dbPath);
 		SQLLogger.cleanUpDevice(dbPath);
-		//Bump up databaseID
-		options.setDatabaseId(options.getDatabaseId() + 1);
 		initialize(deviceType, dbPath, options);
 	}
 
@@ -507,13 +505,11 @@ public class SyncLite extends org.sqlite.JDBC {
 		return ".txn";
 	}
 
-	static final Path getLogSegmentPath(Path dbPath, long databaseID, long seqNum) {
-		//return Path.of(dbPath.toString() + ".synclite", dbPath.getFileName().toString() + getLogSegmentSignature() + databaseID + "."  + seqNum);
+	static final Path getLogSegmentPath(Path dbPath, long seqNum) {
 		return Path.of(dbPath.toString() + ".synclite", seqNum + getLogSegmentSignature());
 	}
 
-	static final Path getDataFilePath(Path dbPath, long databaseID, long seqNum) {
-		//return Path.of(dbPath.toString() + ".synclite", dbPath.getFileName().toString() + getDataFileSignature() + databaseID + "." +seqNum);
+	static final Path getDataFilePath(Path dbPath, long seqNum) {
 		return Path.of(dbPath.toString() + ".synclite", seqNum + getDataFileSignature());
 	}
 

@@ -49,7 +49,6 @@ import java.util.stream.Collectors;
  *   ~/synclite/test/javaloggerconsolidator/workDir/
  *       consolidated_db.sqlite                   &lt;-- shared destination
  *       synclite_consolidator_statistics.db
- *       synclite_device_metadata.db
  *       synclite-&lt;device&gt;-&lt;uuid&gt;/             &lt;-- per-device work area
  * </pre>
  *

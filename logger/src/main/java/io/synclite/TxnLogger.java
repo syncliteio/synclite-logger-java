@@ -88,10 +88,6 @@ abstract class TxnLogger extends SQLLogger {
 		}
 		
 		boolean allowsConcurrentWrites = SyncLiteUtils.deviceAllowsConcurrentWriters(options.getDeviceType());
-		strVal = metadataMgr.getStringProperty("allow_concurrent_writers");
-		if (strVal == null) {
-			metadataMgr.insertProperty("allow_concurrent_writers", allowsConcurrentWrites);
-		}		
 		this.allowsConcurrentWrites = allowsConcurrentWrites;
 	}
 
