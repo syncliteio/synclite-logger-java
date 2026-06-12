@@ -450,6 +450,26 @@
 
 	<profiles>
 		<!--
+            Activated automatically by `-DskipNonJavaLoggers=true` (the same
+            umbrella flag honored by the parent platform pom). This child pom
+            has no <parent>, so the platform pom's profile properties don't
+            flow down here — we must mirror the skip locally. Forces
+            `skipRustRuntime=true` so the `cargo-build-jni` exec is skipped
+            and the `skip-rust-runtime-tests` profile below also activates,
+            excluding the *TestWithConsolidator suites.
+        -->
+        <profile>
+            <id>skip-nonjava-loggers</id>
+            <activation>
+                <property>
+                    <name>skipNonJavaLoggers</name>
+                </property>
+            </activation>
+            <properties>
+                <skipRustRuntime>true</skipRustRuntime>
+            </properties>
+        </profile>
+		<!--
 			Activated automatically by `-DskipRustRuntime=true`. Sets the
 			surefire exclude pattern so the *TestWithConsolidator suites
 			(which need the Rust JNI runtime) are skipped, leaving only
