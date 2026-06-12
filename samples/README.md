@@ -40,8 +40,9 @@ Notes:
 ## Python users
 
 Python does not use this Java logger. Python consumes SyncLite through
-the Rust runtime — today via a small ctypes wrapper over the C ABI
-(`lib/python/synclite.py` shipped in every release zip), and soon via
-the upcoming `synclite-logger-python` PyO3 wheel for the richer API.
+the Rust runtime via the
+[`synclite`](../../synclite-logger-rust/python/) PyO3 wheel — build it
+from source with `maturin develop --release` in
+`synclite-logger-rust/python/` (a PyPI release is on the roadmap).
 Samples live in
 [`synclite-code-samples/synclite-runtime/python/`](../../synclite-code-samples/synclite-runtime/python/).
