@@ -509,7 +509,7 @@ The `Jedis.builder(SyncLiteStore)` overload is available when the application ma
 
 ## Non-Java Runtimes
 
-The Java SDK is JVM-only. For **Python, C/C++, Go, Ruby, Node.js, Rust** — anything that can call a C ABI — use the [SyncLite Rust runtime](../synclite-logger-rust/) which packages the same logger + embedded consolidator behind a stable C ABI. Python users get a dependency-free ctypes wrapper today (`lib/python/synclite.py`) and the richer `synclite-logger-python` PyO3 wheel is on the roadmap. Python samples live in [`synclite-code-samples/synclite-runtime/python/`](../synclite-code-samples/synclite-runtime/python/).
+The Java SDK is JVM-only. For **Python, C/C++, Go, Ruby, Node.js, Rust** — anything that can call a C ABI — use the [SyncLite Rust runtime](../synclite-logger-rust/) which packages the same logger + embedded consolidator behind a stable C ABI. Python users get the [`synclite`](../synclite-logger-rust/python/) PyO3 wheel (built from source via `maturin develop --release`; a PyPI release is on the roadmap). Python samples live in [`synclite-code-samples/synclite-runtime/python/`](../synclite-code-samples/synclite-runtime/python/).
 
 ## Code Samples
 

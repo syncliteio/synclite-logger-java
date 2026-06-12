@@ -460,7 +460,6 @@
 			<activation>
 				<property>
 					<name>skipRustRuntime</name>
-					<value>true</value>
 				</property>
 			</activation>
 			<properties>
