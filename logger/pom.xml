@@ -87,36 +87,18 @@
 			</plugin>
 
 			<!--
-				Build the Rust JNI native (libsynclite_<rev>_jni.*) from this
-				Maven build. Requires a Rust toolchain on PATH. To skip the
-				cargo step entirely (e.g. on a host without a Rust toolchain
-				or to produce a logger-only jar), pass -DskipRustRuntime=true.
-				The antrun step further down picks up whatever the compile
-				produced.
+				Build the Rust JNI native (libsynclite_<rev>_jni.*) when a Rust
+				toolchain is on PATH. Uses antrun's <exec> rather than
+				exec-maven-plugin because antrun supports
+				`failifexecutionfails="false"`, so a host *without* cargo
+				degrades to a warning + a logger-only jar instead of a hard
+				build break. `failonerror="false"` likewise tolerates a
+				non-zero cargo exit. To skip the cargo invocation entirely
+				(saves the warning + tool lookup), pass
+				-DskipRustRuntime=true or -DskipNonJavaLoggers=true.
+				The antrun copy step further down picks up whatever cargo
+				actually produced (which may be nothing).
 			-->
-			<plugin>
-				<groupId>org.codehaus.mojo</groupId>
-				<artifactId>exec-maven-plugin</artifactId>
-				<version>3.1.0</version>
-				<executions>
-					<execution>
-						<id>cargo-build-jni</id>
-						<phase>generate-resources</phase>
-						<goals><goal>exec</goal></goals>
-						<configuration>
-							<executable>cargo</executable>
-							<workingDirectory>${project.basedir}/../../synclite-logger-rust</workingDirectory>
-							<arguments>
-								<argument>build</argument>
-								<argument>--package=synclite-bindings-java</argument>
-								<argument>--release</argument>
-							</arguments>
-							<successCodes><successCode>0</successCode></successCodes>
-							<skip>${skipRustRuntime}</skip>
-						</configuration>
-					</execution>
-				</executions>
-			</plugin>
 
 			<!--
 				Best-effort bundling of the Rust JNI native libraries built
@@ -141,6 +123,24 @@
 				<artifactId>maven-antrun-plugin</artifactId>
 				<version>3.1.0</version>
 				<executions>
+					<execution>
+						<id>cargo-build-jni</id>
+						<phase>generate-resources</phase>
+						<goals><goal>run</goal></goals>
+						<configuration>
+							<skip>${skipRustRuntime}</skip>
+							<target>
+								<exec executable="cargo"
+								      dir="${project.basedir}/../../synclite-logger-rust"
+								      failonerror="false"
+								      failifexecutionfails="false">
+									<arg value="build"/>
+									<arg value="--package=synclite-bindings-java"/>
+									<arg value="--release"/>
+								</exec>
+							</target>
+						</configuration>
+					</execution>
 					<execution>
 						<id>copy-native-libs</id>
 						<phase>generate-resources</phase>
@@ -450,25 +450,25 @@
 
 	<profiles>
 		<!--
-            Activated automatically by `-DskipNonJavaLoggers=true` (the same
-            umbrella flag honored by the parent platform pom). This child pom
-            has no <parent>, so the platform pom's profile properties don't
-            flow down here — we must mirror the skip locally. Forces
-            `skipRustRuntime=true` so the `cargo-build-jni` exec is skipped
-            and the `skip-rust-runtime-tests` profile below also activates,
-            excluding the *TestWithConsolidator suites.
-        -->
-        <profile>
-            <id>skip-nonjava-loggers</id>
-            <activation>
-                <property>
-                    <name>skipNonJavaLoggers</name>
-                </property>
-            </activation>
-            <properties>
-                <skipRustRuntime>true</skipRustRuntime>
-            </properties>
-        </profile>
+			Activated automatically by `-DskipNonJavaLoggers=true` (the same
+			umbrella flag honored by the parent platform pom). This child pom
+			has no <parent>, so the platform pom's profile properties don't
+			flow down here — we must mirror the skip locally. Forces
+			`skipRustRuntime=true` so the `cargo-build-jni` exec is skipped
+			and the `skip-rust-runtime-tests` profile below also activates,
+			excluding the *TestWithConsolidator suites.
+		-->
+		<profile>
+			<id>skip-nonjava-loggers</id>
+			<activation>
+				<property>
+					<name>skipNonJavaLoggers</name>
+				</property>
+			</activation>
+			<properties>
+				<skipRustRuntime>true</skipRustRuntime>
+			</properties>
+		</profile>
 		<!--
 			Activated automatically by `-DskipRustRuntime=true`. Sets the
 			surefire exclude pattern so the *TestWithConsolidator suites
