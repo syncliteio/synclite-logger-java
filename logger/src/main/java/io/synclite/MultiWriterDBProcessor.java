@@ -222,10 +222,30 @@ abstract class MultiWriterDBProcessor extends DBProcessor {
 	 * Returns 0 when no commit has landed yet (or the table is absent).
 	 */
 	final long readMaxSourceCommitId(Path srcDB) throws SQLException {
-		try (Connection conn = getSrcConnection(srcDB);
-				Statement stmt = conn.createStatement();
-				ResultSet rs = stmt.executeQuery(selectMaxTxnTableSql)) {
-			return rs.next() ? rs.getLong(1) : 0L;
+		try (Connection conn = getSrcConnection(srcDB)) {
+			boolean originalAutoCommit = conn.getAutoCommit();
+			try {
+				if (!originalAutoCommit) {
+					conn.setAutoCommit(true);
+				}
+				try (Statement stmt = conn.createStatement();
+						ResultSet rs = stmt.executeQuery(selectMaxTxnTableSql)) {
+					return rs.next() ? rs.getLong(1) : 0L;
+				}
+			} finally {
+				if (!originalAutoCommit) {
+					try {
+						conn.rollback();
+					} catch (SQLException rollbackException) {
+						// Derby can reject rollback after auto-commit is enabled;
+						// the connection is still being closed and the query has already completed.
+						String message = rollbackException.getMessage();
+						if (message == null || !message.contains("No transaction")) {
+							throw rollbackException;
+						}
+					}
+				}
+			}
 		}
 	}
 

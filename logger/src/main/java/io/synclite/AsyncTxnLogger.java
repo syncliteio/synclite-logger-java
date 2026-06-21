@@ -120,6 +120,13 @@ final class AsyncTxnLogger extends TxnLogger {
 				if (record instanceof FlushLogRecord) {
 					FlushLogRecord flushRecord = (FlushLogRecord) record;
 					if (record instanceof CommitAndFlushLogRecord) {
+						if (this.currentTxnCommitId < flushRecord.commitId) {
+							// Empty txn (no ops were logged for this commitId).
+							// Emit a BEGIN so the COMMIT is properly bracketed.
+							this.currentBatchLogCount = 0;
+							this.currentTxnLogCount = 0;
+							logBeginTran(new CommandLogRecord(flushRecord.commitId, "BEGIN", null));
+						}
 						logCommitTran(new CommandLogRecord(flushRecord.commitId, "COMMIT", null));
 						executeLogBatch();
 						commitLogSegment();
@@ -128,6 +135,11 @@ final class AsyncTxnLogger extends TxnLogger {
 						flushRecord.setFlushed();
 						checkups();
 					} else if (record instanceof RollbackAndFlushLogRecord) {
+						if (this.currentTxnCommitId < flushRecord.commitId) {
+							this.currentBatchLogCount = 0;
+							this.currentTxnLogCount = 0;
+							logBeginTran(new CommandLogRecord(flushRecord.commitId, "BEGIN", null));
+						}
 						logRollbackTran(new CommandLogRecord(flushRecord.commitId, "ROLLBACK", null));
 						executeLogBatch();
 						commitLogSegment();

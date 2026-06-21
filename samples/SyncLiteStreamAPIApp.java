@@ -46,7 +46,7 @@ public class SyncLiteStreamAPIApp {
 
     private static final Path DB_PATH = Path.of("sample_stream_api.db");
     private static final String DEVICE_NAME = "sampledevicestreamapi";
-    private static final String POSTGRES_URL = "jdbc:postgresql://localhost:5432/syncdb";
+    private static final String POSTGRES_URL = "jdbc:postgresql://localhost:5432/syncdb?user=postgres&password=postgres";
     private static final String POSTGRES_DB = "syncdb";
     private static final String POSTGRES_SCHEMA = "syncschema";
     private static final Duration AWAIT_TIMEOUT = Duration.ofSeconds(30);
@@ -63,7 +63,7 @@ public class SyncLiteStreamAPIApp {
                 .connectionString(POSTGRES_URL)
                 .database(POSTGRES_DB)
                 .schema(POSTGRES_SCHEMA)
-                .syncMode(DstSyncMode.CONSOLIDATION)
+                .syncMode(DstSyncMode.REPLICATION)
                 .build();
         Streaming.initialize(DB_PATH, DEVICE_NAME, destination);
 
