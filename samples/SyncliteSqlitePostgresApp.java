@@ -68,7 +68,7 @@ public class SyncliteSqlitePostgresApp {
     private static final Path DB_PATH = Path.of("sample_consolidator_sqlite.db");
     private static final String DEVICE_NAME = "sampledevice";
     private static final String POSTGRES_URL =
-            "jdbc:postgresql://localhost:5432/syncdb";
+            "jdbc:postgresql://localhost:5432/syncdb?user=postgres&password=postgres";
     private static final String POSTGRES_USER = "postgres";
     private static final String POSTGRES_PASSWORD = "postgres";
     private static final String POSTGRES_DB = "syncdb";
@@ -93,7 +93,7 @@ public class SyncliteSqlitePostgresApp {
                 .connectionString(POSTGRES_URL)
                 .database(POSTGRES_DB)
                 .schema(POSTGRES_SCHEMA)
-                .syncMode(DstSyncMode.CONSOLIDATION)
+                .syncMode(DstSyncMode.REPLICATION)
                 .build();
 
         // One call wires up the local logger, the segment shipper, and the

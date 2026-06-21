@@ -22,6 +22,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -50,17 +51,24 @@ public class SyncLite extends org.sqlite.JDBC {
 	static
 	{
 		SyncLite instance;
-		//Load embedded db drivers
-		try {
-			Class.forName("org.sqlite.JDBC");
-    		Class.forName("org.duckdb.DuckDBDriver");
-    		Class.forName("org.apache.derby.jdbc.EmbeddedDriver");
-    		Class.forName("org.h2.Driver");
-			Class.forName("org.hsqldb.jdbc.JDBCDriver");
-		} catch (Exception e) {
-			throw new RuntimeException("Failed to load JDBC driver(s) : " + e.getMessage(), e);
-		}
-		
+		//Load embedded db drivers. SQLite is bundled (this class extends org.sqlite.JDBC).
+		//The other drivers are optional: they are only needed if the application creates
+		//a device of that type. We load them individually and swallow ClassNotFoundException
+		//so a missing optional driver does not prevent the SyncLite runtime from starting.
+		//If a device type whose driver is missing is later requested, DriverManager.getConnection
+		//will surface a clear "No suitable driver" error at that point.
+		loadOptionalDriver("org.sqlite.JDBC");
+		loadOptionalDriver("org.duckdb.DuckDBDriver");
+		loadOptionalDriver("org.apache.derby.jdbc.EmbeddedDriver");
+		loadOptionalDriver("org.h2.Driver");
+		loadOptionalDriver("org.hsqldb.jdbc.JDBCDriver");
+		// PostgreSQL driver is needed by awaitSync to poll the destination's
+		// synclite_checkpoint table when dstType=POSTGRES. JDBC 4 SPI
+		// auto-discovery via META-INF/services is unreliable inside the
+		// shaded fat jar (assembly merge can drop the service descriptor),
+		// so register explicitly.
+		loadOptionalDriver("org.postgresql.Driver");
+
 		instance = new SQLite();
 		INSTANCES_BY_DEVICE_TYPES.put(DeviceType.SQLITE, instance);
 		INSTANCES_BY_PRREFIXES.put("jdbc:synclite_sqlite:", instance);
@@ -139,6 +147,15 @@ public class SyncLite extends org.sqlite.JDBC {
 
 
 	protected SyncLite() {	}
+
+	private static void loadOptionalDriver(String driverClassName) {
+		try {
+			Class.forName(driverClassName);
+		} catch (ClassNotFoundException e) {
+			//Optional driver not on classpath. Only required if the application
+			//uses the corresponding device type; surfaced later by DriverManager.
+		}
+	}
 
 	public static boolean isValidURL(String url) {
 		return url != null && url.toLowerCase().startsWith(PREFIX);
@@ -694,66 +711,325 @@ public class SyncLite extends org.sqlite.JDBC {
 	/**
 	 * Block until the in-process consolidator has applied every commit
 	 * the device has produced, or {@code timeout} elapses.
+	 *
+	 * <p>Source-of-truth contract (applies to every destination type):
+	 * <ul>
+	 *   <li><b>Source side</b> &mdash; latest commit id is always
+	 *       {@code MAX(commit_id)} from the user DB file's
+	 *       {@code synclite_txn} table. See
+	 *       {@link #readSourceCommitIdForAwaitSync(Path)}.</li>
+	 *   <li><b>Applied side</b> &mdash; latest applied commit id is
+	 *       read from the destination's {@code synclite_checkpoint}
+	 *       table (the consolidator updates it co-transactionally with
+	 *       each apply batch). We open a fresh JDBC connection to the
+	 *       destination here, qualified by the configured schema if any,
+	 *       and poll {@code MAX(commit_id)} until it catches up. This
+	 *       is the only place that gives a crash-safe, restart-safe
+	 *       answer &mdash; the consolidator's local-mirror checkpoint
+	 *       cannot.</li>
+	 * </ul>
+	 *
+	 * <p>If a device was initialized via the logger-only overload (no
+	 * {@link DestinationOptions}) we have no destination to poll and
+	 * fall back to {@code nativeAwaitAppliedCommit}, which is good
+	 * enough because in that mode there IS no in-process apply.
 	 */
 	public static void awaitSync(Path dbPath, Duration timeout) throws SQLException {
-		long ms = (timeout == null || timeout.isNegative()) ? 0L : timeout.toMillis();
-		// The Java logger owns the source-side commit-id state. We need
-		// to hand the consolidator (Rust) a target so it can poll its
-		// own applied-commit checkpoint — Rust cannot read
-		// `synclite_txn` for JDBC-bridge backends (Derby / H2 /
-		// HyperSQL) and for DuckDB / SQLite native devices the value
-		// already lives in `SQLLogger.currentTxnCommitId`. Pick whichever
-		// path is appropriate.
 		Path absDb = dbPath.toAbsolutePath();
 		long targetCommitId = readSourceCommitIdForAwaitSync(absDb);
+		if (targetCommitId <= 0L) {
+			// No source-side commits => nothing to wait for. Legitimate
+			// fast-path (e.g. device opened but no writes), not an error.
+			return;
+		}
+		long timeoutMs = (timeout == null || timeout.isNegative())
+				? 0L : timeout.toMillis();
+
+		DeviceState state = DEVICES.get(absDb);
+		if (state != null && state.dstType != null) {
+			awaitSyncOnDestination(absDb, state, targetCommitId, timeoutMs);
+			return;
+		}
+		// Logger-only mode: no in-process consolidator was spawned, and
+		// no destination to poll. Hand off to native (which itself will
+		// just confirm there's no pending stage and return).
 		try {
-			NativeConsolidator.nativeAwaitAppliedCommit(absDb.toString(), targetCommitId, ms);
+			NativeConsolidator.nativeAwaitAppliedCommit(absDb.toString(), targetCommitId, timeoutMs);
 		} catch (RuntimeException e) {
 			throw new SQLException("awaitSync failed: " + e.getMessage(), e);
 		}
 	}
 
 	/**
-	 * Resolve the latest source-side commit id for {@code absDb}.
-	 * Strategy:
-	 *   1. Live single-writer logger (SQLite / DuckDB native, Streaming):
-	 *      its in-memory {@code currentTxnCommitId} is authoritative.
-	 *   2. Multi-writer JDBC-bridge backend (Derby / H2 / HyperSQL / DuckDB
-	 *      multi-writer): open a JDBC connection through the device's
-	 *      {@code DBProcessor} and read {@code MAX(commit_id)} from
-	 *      {@code synclite_txn}.
-	 *   3. Fallback: 0 (await_sync returns immediately).
+	 * Poll the destination's {@code synclite_checkpoint} table until
+	 * {@code commit_id >= targetCommitId} for this device, or
+	 * {@code timeoutMs} elapses.
+	 *
+	 * <p>Behavior across destination types:
+	 * <ul>
+	 *   <li>{@link DstType#POSTGRES POSTGRES}: connects via the bundled
+	 *       PG JDBC driver, qualifies the checkpoint table with the
+	 *       configured schema.</li>
+	 *   <li>{@link DstType#DUCKDB DUCKDB}: opens the destination file
+	 *       read-only via {@code jdbc:duckdb:...}, qualifies with the
+	 *       configured schema if any.</li>
+	 *   <li>{@link DstType#SQLITE SQLITE}: opens the destination file
+	 *       read-only via {@code jdbc:sqlite:...?open_mode=1}, no
+	 *       schema concept.</li>
+	 * </ul>
+	 *
+	 * <p>A missing checkpoint table (or zero rows) is treated as
+	 * "0 applied"; the loop keeps waiting because the consolidator
+	 * creates and seeds the table on its first successful apply. The
+	 * timeout error includes whether the table existed plus the last
+	 * underlying SQL error, so you can tell "consolidator never started"
+	 * from "consolidator is behind".
 	 */
-	private static long readSourceCommitIdForAwaitSync(Path absDb) {
-		// 1) Native SQLite / DuckDB / Streaming TxnLogger registered under
-		//    the user-supplied db path keeps the authoritative
-		//    currentTxnCommitId in memory.
-		try {
-			SQLLogger logger = SQLLogger.findInstance(absDb);
-			if (logger != null) {
-				return logger.getCommitID();
-			}
-		} catch (SQLException ignore) {
-			// fall through to JDBC bridge
+	private static void awaitSyncOnDestination(Path absDb, DeviceState state,
+			long targetCommitId, long timeoutMs) throws SQLException {
+		String jdbcUrl = buildDestinationJdbcUrl(state);
+		if (jdbcUrl == null) {
+			throw new SQLException("awaitSync: cannot derive JDBC URL for destination type "
+					+ state.dstType + " (connection_string=" + state.dstConnectionString + ")");
 		}
-		// 2) MultiWriter (Derby / H2 / HyperSQL / DuckDB multi-writer)
-		//    backends: read MAX(commit_id) from synclite_txn in the
-		//    actual user DB through the device's DBProcessor.
+		String checkpointTable = qualifiedCheckpointTable(state);
+		String selectSql = "SELECT MAX(commit_id) FROM " + checkpointTable
+				+ " WHERE synclite_device_id = ? AND synclite_device_name = ?";
+
+		long deadlineNanos = timeoutMs <= 0L
+				? Long.MAX_VALUE
+				: System.nanoTime() + Duration.ofMillis(timeoutMs).toNanos();
+		long appliedCommitId = 0L;
+		boolean checkpointTableMissing = true;
+		SQLException lastError = null;
+		while (true) {
+			try (Connection conn = DriverManager.getConnection(jdbcUrl);
+					PreparedStatement ps = conn.prepareStatement(selectSql)) {
+				ps.setString(1, state.deviceId == null ? "" : state.deviceId);
+				ps.setString(2, state.deviceName == null ? "" : state.deviceName);
+				try (ResultSet rs = ps.executeQuery()) {
+					checkpointTableMissing = false;
+					if (rs.next()) {
+						appliedCommitId = rs.getLong(1);
+						if (rs.wasNull()) {
+							appliedCommitId = 0L;
+						}
+					}
+				}
+				lastError = null;
+			} catch (SQLException e) {
+				// Most common transient: checkpoint relation does not exist
+				// yet (PG SQLSTATE 42P01, SQLite/DuckDB "no such table") —
+				// the consolidator creates it on first successful apply.
+				// Other errors (connectivity, auth, file lock) propagate
+				// after timeout.
+				lastError = e;
+			}
+			if (appliedCommitId >= targetCommitId) {
+				return;
+			}
+			if (System.nanoTime() >= deadlineNanos) {
+				StringBuilder msg = new StringBuilder("awaitSync: timed out after ")
+						.append(timeoutMs).append("ms waiting for destination ")
+						.append(state.dstType)
+						.append(" (target_commit_id=").append(targetCommitId)
+						.append(", applied_commit_id=").append(appliedCommitId)
+						.append(", db=").append(absDb)
+						.append(", checkpoint_table=").append(checkpointTable)
+						.append(")");
+				if (checkpointTableMissing) {
+					msg.append(" \u2014 ").append(checkpointTable)
+							.append(" does not exist yet; consolidator has not completed a successful apply.");
+				}
+				if (lastError != null) {
+					msg.append(" \u2014 last error: ").append(lastError.getMessage());
+					throw new SQLException(msg.toString(), lastError);
+				}
+				throw new SQLException(msg.toString());
+			}
+			try {
+				Thread.sleep(200L);
+			} catch (InterruptedException ie) {
+				Thread.currentThread().interrupt();
+				throw new SQLException("awaitSync: interrupted while waiting", ie);
+			}
+		}
+	}
+
+	/**
+	 * Build a JDBC URL pointing at the destination for read-only
+	 * polling. Accepts the user's raw {@code DestinationOptions#connectionString}
+	 * in whichever form they supplied (JDBC URL, libpq URL, or bare file path).
+	 */
+	private static String buildDestinationJdbcUrl(DeviceState state) {
+		String raw = state.dstConnectionString;
+		if (raw == null) {
+			return null;
+		}
+		String trimmed = raw.trim();
+		if (trimmed.isEmpty()) {
+			return null;
+		}
+		switch (state.dstType) {
+			case POSTGRES:
+				if (trimmed.regionMatches(true, 0, "jdbc:", 0, 5)) {
+					return trimmed;
+				}
+				if (trimmed.regionMatches(true, 0, "postgresql://", 0, 13)
+						|| trimmed.regionMatches(true, 0, "postgres://", 0, 11)) {
+					return "jdbc:" + trimmed;
+				}
+				return trimmed;
+			case DUCKDB:
+				if (trimmed.regionMatches(true, 0, "jdbc:duckdb:", 0, 12)) {
+					return trimmed;
+				}
+				return "jdbc:duckdb:" + trimmed;
+			case SQLITE:
+				// Read-only open avoids any lock contention with the
+				// consolidator's writer connection.
+				if (trimmed.regionMatches(true, 0, "jdbc:sqlite:", 0, 12)) {
+					return trimmed.contains("?")
+							? trimmed
+							: trimmed + "?open_mode=1";
+				}
+				return "jdbc:sqlite:" + trimmed.replace('\\', '/') + "?open_mode=1";
+			default:
+				return null;
+		}
+	}
+
+	/**
+	 * Return the destination's {@code synclite_checkpoint} table name,
+	 * qualified by schema where supported. Identifier quoting matches
+	 * the destination engine's conventions (double-quote for PG/DuckDB
+	 * standard SQL; SQLite is unqualified single-DB so no quoting needed).
+	 */
+	private static String qualifiedCheckpointTable(DeviceState state) {
+		String schema = state.dstSchema == null ? null : state.dstSchema.trim();
+		switch (state.dstType) {
+			case POSTGRES:
+				if (schema == null || schema.isEmpty()) {
+					return "synclite_checkpoint";
+				}
+				return quoteSqlIdent(schema) + "." + quoteSqlIdent("synclite_checkpoint");
+			case DUCKDB:
+				if (schema == null || schema.isEmpty()) {
+					return "synclite_checkpoint";
+				}
+				return quoteSqlIdent(schema) + "." + quoteSqlIdent("synclite_checkpoint");
+			case SQLITE:
+			default:
+				return "synclite_checkpoint";
+		}
+	}
+
+	/** Quote a SQL identifier with double quotes (standard SQL; works on PG and DuckDB). */
+	private static String quoteSqlIdent(String ident) {
+		return "\"" + ident.replace("\"", "\"\"") + "\"";
+	}
+
+	/**
+	 * Resolve the latest source-side commit id for {@code absDb}.
+	 *
+	 * <p>Source of truth is the {@code synclite_txn} table that lives
+	 * inside the user DB file. Every user commit advances
+	 * {@code commit_id} in that table atomically with the user-data
+	 * write, so {@code MAX(commit_id)} from a fresh, plain JDBC
+	 * connection (not the {@code synclite_*} wrapper) is the durable,
+	 * crash-safe answer — and it survives the user closing their
+	 * SyncLite connection, which the in-memory commit-id tracker does
+	 * not.
+	 *
+	 * <p>Routing:
+	 * <ul>
+	 *   <li>SQLite-native devices ({@code SQLITE}, {@code SQLITE_APPENDER},
+	 *       {@code SQLITE_STORE}, {@code STREAMING}, {@code DBLOGGER}):
+	 *       open {@code jdbc:sqlite:&lt;path&gt;} read-only.</li>
+	 *   <li>DuckDB-native devices: open {@code jdbc:duckdb:&lt;path&gt;}.</li>
+	 *   <li>JDBC-bridge devices (Derby / H2 / HyperSQL): delegate to
+	 *       {@link MultiWriterDBProcessor#readMaxSourceCommitId(Path)},
+	 *       which already knows how to reach the backend.</li>
+	 * </ul>
+	 *
+	 * <p>Throws on failure rather than silently returning 0; a "0"
+	 * answer would short-circuit {@code await_applied_commit} into a
+	 * false-positive "succeeded" without ever proving the consolidator
+	 * applied anything.
+	 */
+	private static long readSourceCommitIdForAwaitSync(Path absDb) throws SQLException {
 		DeviceState state = DEVICES.get(absDb);
+		String jdbcUrl = buildPlainJdbcUrlForDevice(absDb, state);
+		if (jdbcUrl != null) {
+			try (Connection conn = DriverManager.getConnection(jdbcUrl);
+					Statement stmt = conn.createStatement();
+					ResultSet rs = stmt.executeQuery("SELECT MAX(commit_id) FROM synclite_txn")) {
+				if (rs.next()) {
+					long v = rs.getLong(1);
+					return v < 0 ? 0L : v;
+				}
+				return 0L;
+			} catch (SQLException e) {
+				throw new SQLException(
+						"awaitSync: failed to read source commit id from "
+								+ absDb + " : " + e.getMessage(), e);
+			}
+		}
+		// JDBC-bridge devices: the user "DB file" is actually a JDBC
+		// backend (Derby / H2 / HyperSQL); route through the device's
+		// MultiWriterDBProcessor.
 		if (state != null && state.deviceType != null) {
 			SyncLite syncLite = INSTANCES_BY_DEVICE_TYPES.get(state.deviceType);
 			if (syncLite != null) {
-				try {
-					DBProcessor proc = syncLite.getDBProcessor();
-					if (proc instanceof MultiWriterDBProcessor) {
-						return ((MultiWriterDBProcessor) proc).readMaxSourceCommitId(absDb);
-					}
-				} catch (RuntimeException | SQLException ignore) {
-					// best-effort: fall through to 0
+				DBProcessor proc = syncLite.getDBProcessor();
+				if (proc instanceof MultiWriterDBProcessor) {
+					return ((MultiWriterDBProcessor) proc).readMaxSourceCommitId(absDb);
 				}
 			}
 		}
-		return 0L;
+		throw new SQLException(
+				"awaitSync: could not resolve source commit id for "
+						+ absDb + " (device not initialized via SyncLite.initialize)");
+	}
+
+	/**
+	 * Build a plain JDBC URL for opening the user DB file directly
+	 * (bypassing the {@code synclite_*} wrapper) to read
+	 * {@code synclite_txn}. Returns {@code null} for JDBC-bridge device
+	 * types whose backing store is not a single local file.
+	 *
+	 * <p>SQLite URLs request read-only mode via {@code open_mode=1}
+	 * (SQLITE_OPEN_READONLY) so that opening this connection while the
+	 * user's writer connection is still alive cannot acquire any
+	 * conflicting locks.
+	 */
+	private static String buildPlainJdbcUrlForDevice(Path absDb, DeviceState state) {
+		DeviceType t = (state != null) ? state.deviceType : null;
+		// Fall back to extension sniffing only when the device has not
+		// been registered yet (very early call from a test harness).
+		if (t == null) {
+			String n = absDb.getFileName().toString().toLowerCase();
+			if (n.endsWith(".duckdb")) {
+				return "jdbc:duckdb:" + absDb;
+			}
+			return "jdbc:sqlite:" + absDb.toString().replace('\\', '/')
+					+ "?open_mode=1";
+		}
+		switch (t) {
+			case SQLITE:
+			case SQLITE_APPENDER:
+			case SQLITE_STORE:
+			case STREAMING:
+			case DBLOGGER:
+				return "jdbc:sqlite:" + absDb.toString().replace('\\', '/')
+						+ "?open_mode=1";
+			case DUCKDB:
+			case DUCKDB_APPENDER:
+			case DUCKDB_STORE:
+				return "jdbc:duckdb:" + absDb;
+			default:
+				return null;
+		}
 	}
 
 	/** Snapshot of the device's consolidator run state + latest heartbeat row. */
@@ -898,7 +1174,14 @@ public class SyncLite extends org.sqlite.JDBC {
 					"failed to create per-device stage " + perDeviceStage + ": " + e.getMessage(), e);
 		}
 
-		DEVICES.put(absDb, new DeviceState(handle, deviceType));
+		DEVICES.put(absDb, new DeviceState(
+				handle,
+				deviceType,
+				destination.dstType(),
+				destination.connectionString(),
+				destination.schema().orElse(null),
+				deviceId,
+				deviceName == null ? "" : deviceName));
 		installShutdownHook();
 	}
 
@@ -1024,9 +1307,25 @@ public class SyncLite extends org.sqlite.JDBC {
 	static final class DeviceState {
 		final long handle;
 		final DeviceType deviceType;
-		DeviceState(long handle, DeviceType deviceType) {
+		/** Destination snapshot — captured at initialize() so awaitSync can
+		 *  query the true source-of-truth (destination synclite_checkpoint)
+		 *  for POSTGRES targets instead of trusting the consolidator's
+		 *  local-mirror checkpoint. May be null for logger-only mode. */
+		final DstType dstType;
+		final String dstConnectionString;
+		final String dstSchema;
+		final String deviceId;
+		final String deviceName;
+		DeviceState(long handle, DeviceType deviceType,
+				DstType dstType, String dstConnectionString,
+				String dstSchema, String deviceId, String deviceName) {
 			this.handle = handle;
 			this.deviceType = deviceType;
+			this.dstType = dstType;
+			this.dstConnectionString = dstConnectionString;
+			this.dstSchema = dstSchema;
+			this.deviceId = deviceId;
+			this.deviceName = deviceName;
 		}
 	}
 

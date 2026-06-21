@@ -18,19 +18,19 @@ This folder contains the Java samples for the SyncLite Logger.
 Compile against the built logger jar:
 
 ```
-javac -cp ..\logger\target\synclite-oss.jar *.java
+javac -cp ..\logger\target\synclite-1.0.0.jar *.java
 ```
 
 Run any sample (example):
 
 ```
-java -cp ..\logger\target\synclite-oss.jar;. SyncliteDeviceApp
+java -cp ..\logger\target\synclite-1.0.0.jar;. SyncliteDeviceApp
 ```
 
-`SyncliteSqlitePostgresApp` uses the in-process consolidator, but the same `synclite-oss.jar` above already bundles it — nothing extra to add on the classpath:
+`SyncliteSqlitePostgresApp` uses the in-process consolidator, but the same `synclite-1.0.0.jar` above already bundles it — nothing extra to add on the classpath:
 
 ```
-java -cp ..\logger\target\synclite-oss.jar;. SyncliteSqlitePostgresApp
+java -cp ..\logger\target\synclite-1.0.0.jar;. SyncliteSqlitePostgresApp
 ```
 
 Notes:
@@ -45,4 +45,4 @@ the Rust runtime via the
 from source with `maturin develop --release` in
 `synclite-logger-rust/python/` (a PyPI release is on the roadmap).
 Samples live in
-[`synclite-code-samples/synclite-runtime/python/`](../../synclite-code-samples/synclite-runtime/python/).
+[`synclite-code-samples/python/`](../../synclite-code-samples/python/).
