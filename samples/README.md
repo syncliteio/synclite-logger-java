@@ -13,6 +13,33 @@ This folder contains the Java samples for the SyncLite Logger.
 - `SyncLiteKafkaProduceApp.java`
 - `SyncLiteJedisAPIApp.java`
 
+## Device families
+
+The samples span three **device families**. Pick the one that matches how
+your app wants to write:
+
+- **SQL device** — a full, SQLite-syntax-compliant embedded SQL database
+  reached through the JDBC `Connection` API. Run arbitrary
+  `CREATE` / `ALTER` / `SELECT` / `INSERT` / `UPDATE` / `DELETE`. Reach for
+  it when your app needs real SQL, JOINs, multi-statement transactions, or
+  ad-hoc DDL. See `SyncliteDeviceApp.java` and
+  `SyncliteSqlitePostgresApp.java`.
+- **Store device** — tuned for bulk write-through. The runtime emits
+  pre-formed row events that the Consolidator applies directly to the
+  destination — no SQL-log parsing or CDC-deduction on the apply path — so
+  it delivers the highest end-to-end consolidation throughput, and is
+  usually the fastest *and* simplest starting point for a new app. Drive
+  it as a SQL device (`SyncLiteStoreDeviceApp.java`) or through the typed
+  `SyncLiteStore` CRUD API — `insert` / `insertBatch` / `selectAll` over
+  plain `Map`s with automatic schema evolution (`SyncLiteStoreAPIApp.java`).
+- **Streaming device** — append-only ingestion for high-throughput event
+  capture; accepts inserts and rejects update / delete by design. Drive it
+  as a device (`SyncLiteStreamingApp.java`) or through the fluent
+  `SyncLiteStream` `insert` / `insertBatch` API (`SyncLiteStreamAPIApp.java`).
+
+All three produce the same change log and flow through the same shipper +
+consolidator, so you can mix device families inside one application.
+
 ## Build & Run
 
 Compile against the built logger jar:
