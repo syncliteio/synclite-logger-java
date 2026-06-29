@@ -58,7 +58,10 @@ public class SyncLite extends org.sqlite.JDBC {
 		//If a device type whose driver is missing is later requested, DriverManager.getConnection
 		//will surface a clear "No suitable driver" error at that point.
 		loadOptionalDriver("org.sqlite.JDBC");
-		loadOptionalDriver("org.duckdb.DuckDBDriver");
+		boolean duckdbDriverAvailable = isDriverAvailable("org.duckdb.DuckDBDriver");
+		if (duckdbDriverAvailable) {
+			loadOptionalDriver("org.duckdb.DuckDBDriver");
+		}
 		loadOptionalDriver("org.apache.derby.jdbc.EmbeddedDriver");
 		loadOptionalDriver("org.h2.Driver");
 		loadOptionalDriver("org.hsqldb.jdbc.JDBCDriver");
@@ -81,17 +84,19 @@ public class SyncLite extends org.sqlite.JDBC {
 		INSTANCES_BY_DEVICE_TYPES.put(DeviceType.SQLITE_STORE, instance);
 		INSTANCES_BY_PRREFIXES.put("jdbc:synclite_sqlite_store:", instance);
 
-		instance = new DuckDB();
-		INSTANCES_BY_DEVICE_TYPES.put(DeviceType.DUCKDB, instance);
-		INSTANCES_BY_PRREFIXES.put("jdbc:synclite_duckdb:", instance);
+		if (duckdbDriverAvailable) {
+			instance = new DuckDB();
+			INSTANCES_BY_DEVICE_TYPES.put(DeviceType.DUCKDB, instance);
+			INSTANCES_BY_PRREFIXES.put("jdbc:synclite_duckdb:", instance);
 
-		instance = new DuckDBAppender();
-		INSTANCES_BY_DEVICE_TYPES.put(DeviceType.DUCKDB_APPENDER, instance);
-		INSTANCES_BY_PRREFIXES.put("jdbc:synclite_duckdb_appender:", instance);
+			instance = new DuckDBAppender();
+			INSTANCES_BY_DEVICE_TYPES.put(DeviceType.DUCKDB_APPENDER, instance);
+			INSTANCES_BY_PRREFIXES.put("jdbc:synclite_duckdb_appender:", instance);
 
-		instance = new DuckDBStore();
-		INSTANCES_BY_DEVICE_TYPES.put(DeviceType.DUCKDB_STORE, instance);
-		INSTANCES_BY_PRREFIXES.put("jdbc:synclite_duckdb_store:", instance);
+			instance = new DuckDBStore();
+			INSTANCES_BY_DEVICE_TYPES.put(DeviceType.DUCKDB_STORE, instance);
+			INSTANCES_BY_PRREFIXES.put("jdbc:synclite_duckdb_store:", instance);
+		}
 
 		instance = new Derby();
 		INSTANCES_BY_DEVICE_TYPES.put(DeviceType.DERBY, instance);
@@ -154,6 +159,15 @@ public class SyncLite extends org.sqlite.JDBC {
 		} catch (ClassNotFoundException e) {
 			//Optional driver not on classpath. Only required if the application
 			//uses the corresponding device type; surfaced later by DriverManager.
+		}
+	}
+
+	static boolean isDriverAvailable(String driverClassName) {
+		try {
+			Class.forName(driverClassName);
+			return true;
+		} catch (ClassNotFoundException e) {
+			return false;
 		}
 	}
 
