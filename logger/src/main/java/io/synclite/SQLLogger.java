@@ -314,11 +314,25 @@ abstract class SQLLogger extends Thread {
 		options.setUUID(this.uuid.toString());
 
 		strVal = metadataMgr.getStringProperty("device_name");
+		String configuredDeviceName = options.getDeviceName();
 		if (strVal != null) {
+			if (configuredDeviceName != null && !configuredDeviceName.isEmpty() && !configuredDeviceName.equals(strVal)) {
+				throw new SQLException("SyncLite : This device metadata name : " + strVal + " does not match configured device name : " + configuredDeviceName);
+			}
 			this.deviceName = strVal;
 		} else {
-			this.deviceName = options.getDeviceName();
+			this.deviceName = configuredDeviceName;
 			metadataMgr.insertProperty("device_name", this.deviceName);
+		}
+
+		strVal = metadataMgr.getStringProperty("device_type");
+		DeviceType configuredDeviceType = options.getDeviceType();
+		if (strVal != null) {
+			if (configuredDeviceType != null && !configuredDeviceType.toString().equalsIgnoreCase(strVal)) {
+				throw new SQLException("SyncLite : This device metadata type : " + strVal + " does not match configured device type : " + configuredDeviceType);
+			}
+		} else if (configuredDeviceType != null) {
+			metadataMgr.insertProperty("device_type", configuredDeviceType.toString());
 		}
 
 		strVal = metadataMgr.getStringProperty("database_name");
@@ -436,6 +450,14 @@ abstract class SQLLogger extends Thread {
 
 	protected abstract void undoLogsForCommit(long commitId) throws SQLException;
 	protected abstract void resolveInDoubtTxn() throws SQLException;
+
+	protected String getDeviceName() {
+		return this.deviceName;
+	}
+
+	protected DeviceType getDeviceType() {
+		return this.options.getDeviceType();
+	}
 
 	protected abstract String getLogSegmentSignature();
 
