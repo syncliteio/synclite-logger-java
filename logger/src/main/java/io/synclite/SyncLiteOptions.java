@@ -577,6 +577,15 @@ public class SyncLiteOptions {
 				options.setDeviceName(optVal);
 			}
 
+			optVal = properties.get("device-type");
+			if (optVal != null) {
+				try {
+					options.setDeviceType(DeviceType.valueOf(optVal.toUpperCase()));
+				} catch (IllegalArgumentException e) {
+					throw new SQLException("SyncLite : Unsupported device type : " + optVal + " specified in configuration file");
+				}
+			}
+
 			optVal = properties.get("log-queue-size");
 			if (optVal != null) {
 				Integer val = Integer.valueOf(optVal);
