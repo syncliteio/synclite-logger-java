@@ -10,7 +10,7 @@ import java.sql.SQLException;
 
 import org.junit.jupiter.api.Test;
 
-class OptionalDriverRegistrationTest {
+class OptionalDeviceRegistrationTest {
 
     @Test
     void sqliteFamilyDevicesStillInitializeWhenDuckDBDriverIsAbsent() throws Exception {
