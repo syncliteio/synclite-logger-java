@@ -326,8 +326,22 @@ public class SyncLite extends org.sqlite.JDBC {
 
 		//Synchronize access for a given dbPath.
 		synchronized (lock) {
-			if (SQLLogger.findInstance(dbPath) != null) {
-				//throw new SQLException("SyncLite transactional duckdb device " + dbPath + " already initialized");
+			setDeviceTypeInOptions(options);
+
+			SQLLogger existingLogger = SQLLogger.findInstance(dbPath);
+			if (existingLogger != null) {
+				String configuredDeviceName = options.getDeviceName();
+				if (configuredDeviceName != null && !configuredDeviceName.isEmpty() && existingLogger.getDeviceName() != null
+						&& !configuredDeviceName.equals(existingLogger.getDeviceName())) {
+					throw new SQLException("SyncLite : This device metadata name : " + existingLogger.getDeviceName()
+							+ " does not match configured device name : " + configuredDeviceName);
+				}
+				DeviceType configuredDeviceType = options.getDeviceType();
+				if (configuredDeviceType != null && existingLogger.getDeviceType() != null
+						&& !configuredDeviceType.toString().equalsIgnoreCase(existingLogger.getDeviceType().toString())) {
+					throw new SQLException("SyncLite : This device metadata type : " + existingLogger.getDeviceType()
+							+ " does not match configured device type : " + configuredDeviceType);
+				}
 				return;
 			}
 
@@ -369,9 +383,6 @@ public class SyncLite extends org.sqlite.JDBC {
 					}
 				}
 			}
-			//Set device type
-			setDeviceTypeInOptions(options);
-
 			getOrCreateLoggerInstace(dbPath, options, tracer);
 
 			addShutdownHook();
