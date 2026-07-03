@@ -127,6 +127,10 @@ public final class SyncTxnLogger extends TxnLogger {
 	protected void logCommitAndFlush(long commitId) throws SQLException {
 		synchronized (txnLock) {
 			txnInProgress = true;
+			if (this.currentTxnCommitId < commitId) {
+				// Empty txn: emit BEGIN so COMMIT is always bracketed.
+				appendLogRecord(new CommandLogRecord(commitId, "BEGIN", null));
+			}
 			appendLogRecord(new CommandLogRecord(commitId, "COMMIT", null));
 			executeLogBatch();
 			commitLogSegment();
@@ -142,6 +146,11 @@ public final class SyncTxnLogger extends TxnLogger {
 	protected void logRollbackAndFlush(long commitId) throws SQLException {
 		synchronized (txnLock) {
 			txnInProgress = true;
+			if (this.currentTxnCommitId < commitId) {
+				// Empty txn: emit BEGIN so rollback boundaries are explicit.
+				appendLogRecord(new CommandLogRecord(commitId, "BEGIN", null));
+			}
+			appendLogRecord(new CommandLogRecord(commitId, "ROLLBACK", null));
 			executeLogBatch();
 			undoLogsForCommit(commitId);
 			commitLogSegment();
