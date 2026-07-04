@@ -58,6 +58,7 @@ public class SyncLite extends org.sqlite.JDBC {
 		//If a device type whose driver is missing is later requested, DriverManager.getConnection
 		//will surface a clear "No suitable driver" error at that point.
 		loadOptionalDriver("org.sqlite.JDBC");
+		
 		boolean duckdbDriverAvailable = isDriverAvailable("org.duckdb.DuckDBDriver");
 		if (duckdbDriverAvailable) {
 			loadOptionalDriver("org.duckdb.DuckDBDriver");
@@ -422,8 +423,12 @@ public class SyncLite extends org.sqlite.JDBC {
 
 	private static Logger initTracer(Path dbPath) {
 		Path tracePath = Path.of(dbPath.toAbsolutePath().toString() + ".synclite", dbPath.getFileName().toString() + ".trace");
-		Logger logger = Logger.getLogger(SQLLogger.class);
+		Logger logger = Logger.getLogger(SQLLogger.class.getName() + "." + tracePath.toAbsolutePath().normalize().toString());
 		logger.setLevel(Level.ERROR);
+		logger.setAdditivity(false);
+		if (logger.getAppender("SyncLiteLogger") != null) {
+			return logger;
+		}
 		RollingFileAppender fa = new RollingFileAppender();
 		fa.setName("SyncLiteLogger");
 		fa.setFile(tracePath.toString());
