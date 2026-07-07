@@ -18,10 +18,11 @@ class OptionalDeviceRegistrationTest {
         assertFalse(SyncLite.isDriverAvailable("com.example.DoesNotExist"));
 
         Path tempDir = Files.createTempDirectory("synclite-optional-driver-test");
-        Path databasePath = Files.createTempFile(tempDir, "device", ".db");
+        Path sqliteStoreDb = Files.createTempFile(tempDir, "sqlite-store", ".db");
+        Path streamingDb = Files.createTempFile(tempDir, "streaming", ".db");
         try {
-            assertDoesNotThrow(() -> SQLiteStore.initialize(databasePath));
-            assertDoesNotThrow(() -> Streaming.initialize(databasePath));
+            assertDoesNotThrow(() -> SQLiteStore.initialize(sqliteStoreDb));
+            assertDoesNotThrow(() -> Streaming.initialize(streamingDb));
         } finally {
             deleteRecursively(tempDir);
         }
