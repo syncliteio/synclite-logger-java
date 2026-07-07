@@ -199,6 +199,11 @@ public class KafkaProducer implements Producer<String,String> {
     }
 
     @Override
+    public String clientInstanceId(Duration timeout) {
+        return "synclite-local-producer";
+    }
+
+    @Override
     public void close(Duration timeout) {
         close();
     }
