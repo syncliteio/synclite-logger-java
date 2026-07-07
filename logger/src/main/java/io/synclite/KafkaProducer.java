@@ -21,6 +21,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.SQLException;
+import java.time.Duration;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
@@ -29,16 +32,20 @@ import java.util.concurrent.Future;
 import org.apache.kafka.clients.consumer.ConsumerGroupMetadata;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.clients.producer.Callback;
+import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.KafkaException;
+import org.apache.kafka.common.Metric;
+import org.apache.kafka.common.MetricName;
+import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.config.ConfigException;
 import org.apache.kafka.common.errors.ProducerFencedException;
 import org.apache.kafka.common.serialization.StringSerializer;
 
-public class KafkaProducer extends org.apache.kafka.clients.producer.KafkaProducer<String,String> {
+public class KafkaProducer implements Producer<String,String> {
 	SyncLiteOptions options;
 	Properties props;
 	int maxBatchSizeBytes;
@@ -63,9 +70,8 @@ public class KafkaProducer extends org.apache.kafka.clients.producer.KafkaProduc
 	}
 
 	public KafkaProducer(Properties properties) throws Exception {
-		super(withDefaults(properties));
-		props = properties;
-		options = SyncLiteOptions.loadFromProps(properties);
+		props = withDefaults(properties);
+		options = SyncLiteOptions.loadFromProps(props);
 		setDefaults();
 		//this.keySerializer = (Serializer<String>) getConfiguredInstance(properties, org.apache.kafka.clients.producer.ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, Serializer.class);
         //this.valueSerializer = (Serializer<String>) getConfiguredInstance(properties, org.apache.kafka.clients.producer.ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, Serializer.class);        
@@ -182,6 +188,21 @@ public class KafkaProducer extends org.apache.kafka.clients.producer.KafkaProduc
     	}
     }
 
+    @Override
+    public List<PartitionInfo> partitionsFor(String topic) {
+        return Collections.emptyList();
+    }
+
+    @Override
+    public Map<MetricName, ? extends Metric> metrics() {
+        return Collections.emptyMap();
+    }
+
+    @Override
+    public void close(Duration timeout) {
+        close();
+    }
+
     private Future<RecordMetadata> doSend(ProducerRecord<String, String> record, Callback callback) {
 		CompletableFuture<RecordMetadata> future = new CompletableFuture<>();
 		try {
@@ -221,6 +242,12 @@ public class KafkaProducer extends org.apache.kafka.clients.producer.KafkaProduc
     @Override
     public void initTransactions() {
     	throw new IllegalStateException("Unsupported operation initTransactions in SyncLite KafkaProducer");
+    }
+
+    @Override
+    public void sendOffsetsToTransaction(Map<TopicPartition, OffsetAndMetadata> offsets, String consumerGroupId)
+            throws ProducerFencedException {
+        throw new IllegalStateException("Unsupported operation sendOffsetToTransaction in SyncLite KafkaProducer");
     }
 
     @Override
