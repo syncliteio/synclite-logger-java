@@ -41,6 +41,7 @@ import org.apache.kafka.common.Metric;
 import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.Uuid;
 import org.apache.kafka.common.config.ConfigException;
 import org.apache.kafka.common.errors.ProducerFencedException;
 import org.apache.kafka.common.serialization.StringSerializer;
@@ -199,8 +200,8 @@ public class KafkaProducer implements Producer<String,String> {
     }
 
     @Override
-    public String clientInstanceId(Duration timeout) {
-        return "synclite-local-producer";
+    public Uuid clientInstanceId(Duration timeout) {
+        return Uuid.randomUuid();
     }
 
     @Override
