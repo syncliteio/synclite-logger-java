@@ -33,6 +33,14 @@
 		-->
 		<skipRustRuntime>false</skipRustRuntime>
 		<!--
+			Skip the cross-compiled Linux JNI natives (cargo-zigbuild for
+			x86_64 + aarch64). Default false: attempt them so the jar ships
+			Linux .so bindings alongside the host native. Best-effort — a host
+			without cargo-zigbuild/zig degrades to a host-only jar. Pass
+			-DskipRustCrossCompile=true to skip explicitly (also faster).
+		-->
+		<skipRustCrossCompile>false</skipRustCrossCompile>
+		<!--
 			Default: don't exclude any tests (placeholder pattern matches no class).
 			The `skip-rust-runtime-tests` profile below overrides this to skip
 			the *TestWithConsolidator suites when -DskipRustRuntime=true is passed.
@@ -124,11 +132,60 @@
 				<version>3.1.0</version>
 				<executions>
 					<execution>
+						<!--
+							Detect the Rust cross toolchain up front (phase=initialize)
+							and export effective <skip> flags so the cargo steps below
+							are SKIPPED (not merely tolerated) when cargo/zig/cargo-zigbuild
+							are absent. antrun's failifexecutionfails=false stops a missing
+							tool from FAILING the build, but antrun still logs the
+							IOException at [ERROR]; probing through the OS shell
+							(where/command -v) returns a clean exit code instead, so a
+							Java-only checkout builds with NO scary error lines.
+						-->
+						<id>detect-jni-toolchain</id>
+						<phase>initialize</phase>
+						<goals><goal>run</goal></goals>
+						<configuration>
+							<exportAntProperties>true</exportAntProperties>
+							<target>
+								<macrodef name="probe">
+									<attribute name="prop"/>
+									<attribute name="wincmd"/>
+									<attribute name="nixcmd"/>
+									<sequential>
+										<exec osfamily="windows" executable="cmd" failifexecutionfails="false" resultproperty="@{prop}.rc">
+											<arg value="/c"/><arg value="@{wincmd}"/>
+										</exec>
+										<exec osfamily="unix" executable="sh" failifexecutionfails="false" resultproperty="@{prop}.rc">
+											<arg value="-c"/><arg value="@{nixcmd}"/>
+										</exec>
+										<condition property="@{prop}" value="true"><equals arg1="${@{prop}.rc}" arg2="0"/></condition>
+										<property name="@{prop}" value="false"/>
+									</sequential>
+								</macrodef>
+								<probe prop="cargoPresent"    wincmd="where cargo >NUL 2>NUL"          nixcmd="command -v cargo >/dev/null 2>&amp;1"/>
+								<probe prop="zigPresent"      wincmd="where zig >NUL 2>NUL"            nixcmd="command -v zig >/dev/null 2>&amp;1"/>
+								<probe prop="zigbuildPresent" wincmd="where cargo-zigbuild >NUL 2>NUL" nixcmd="command -v cargo-zigbuild >/dev/null 2>&amp;1"/>
+								<!-- effectiveSkipJni = skipRustRuntime OR (cargo absent). -->
+								<condition property="effectiveSkipJni" value="true"><or><istrue value="${skipRustRuntime}"/><isfalse value="${cargoPresent}"/></or></condition>
+								<property name="effectiveSkipJni" value="false"/>
+								<!-- effectiveSkipJniCross = skipRustCrossCompile OR NOT(cargo AND zig AND cargo-zigbuild). -->
+								<condition property="effectiveSkipJniCross" value="true">
+									<or>
+										<istrue value="${skipRustCrossCompile}"/>
+										<not><and><istrue value="${cargoPresent}"/><istrue value="${zigPresent}"/><istrue value="${zigbuildPresent}"/></and></not>
+									</or>
+								</condition>
+								<property name="effectiveSkipJniCross" value="false"/>
+							</target>
+						</configuration>
+					</execution>
+					<execution>
 						<id>cargo-build-jni</id>
 						<phase>generate-resources</phase>
 						<goals><goal>run</goal></goals>
 						<configuration>
-							<skip>${skipRustRuntime}</skip>
+							<skip>${effectiveSkipJni}</skip>
 							<target>
 								<exec executable="cargo"
 								      dir="${project.basedir}/../../synclite-logger-rust"
@@ -137,6 +194,48 @@
 									<arg value="build"/>
 									<arg value="--package=synclite-bindings-java"/>
 									<arg value="--release"/>
+								</exec>
+							</target>
+						</configuration>
+					</execution>
+					<execution>
+						<!--
+							Cross-compile the Linux JNI cdylibs (x86_64 + aarch64)
+							via cargo-zigbuild so the jar's META-INF/native/linux-*
+							slots are populated, not just windows-x64. Same crate as
+							the host build (synclite-bindings-java -> libsynclite_jni.so
+							under target/<triple>/release/). Best-effort: a host
+							without cargo-zigbuild/zig (or the rustup targets) degrades
+							to a host-only jar. Runs before copy-native-libs (declaration
+							order within generate-resources) so the copy step finds them.
+						-->
+						<id>cargo-build-jni-cross</id>
+						<phase>generate-resources</phase>
+						<goals><goal>run</goal></goals>
+						<configuration>
+							<skip>${effectiveSkipJniCross}</skip>
+							<target>
+								<exec executable="cargo"
+								      dir="${project.basedir}/../../synclite-logger-rust"
+								      failonerror="false"
+								      failifexecutionfails="false">
+									<env key="SYNCLITE_RUST_ARTIFACT_VERSION" value="${revision}"/>
+									<arg value="zigbuild"/>
+									<arg value="--package=synclite-bindings-java"/>
+									<arg value="--release"/>
+									<arg value="--target"/>
+									<arg value="x86_64-unknown-linux-gnu"/>
+								</exec>
+								<exec executable="cargo"
+								      dir="${project.basedir}/../../synclite-logger-rust"
+								      failonerror="false"
+								      failifexecutionfails="false">
+									<env key="SYNCLITE_RUST_ARTIFACT_VERSION" value="${revision}"/>
+									<arg value="zigbuild"/>
+									<arg value="--package=synclite-bindings-java"/>
+									<arg value="--release"/>
+									<arg value="--target"/>
+									<arg value="aarch64-unknown-linux-gnu"/>
 								</exec>
 							</target>
 						</configuration>
