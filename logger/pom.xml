@@ -46,6 +46,13 @@
 			the *TestWithConsolidator suites when -DskipRustRuntime=true is passed.
 		-->
 		<surefire.consolidator.exclude>**/__never_matches_anything__</surefire.consolidator.exclude>
+		<!--
+			Third-party license download/report. This hits the network and is
+			slow, so it is SKIPPED by default (skipDownloadLicenses=true) and
+			only runs for release builds invoked with -DskipDownloadLicenses=false
+			(e.g. mvn -DskipDownloadLicenses=false package).
+		-->
+		<skipDownloadLicenses>true</skipDownloadLicenses>
 	</properties>
 
 	<build>
@@ -164,7 +171,12 @@
 									</sequential>
 								</macrodef>
 								<probe prop="cargoPresent"    wincmd="where cargo >NUL 2>NUL"          nixcmd="command -v cargo >/dev/null 2>&amp;1"/>
-								<probe prop="zigPresent"      wincmd="where zig >NUL 2>NUL"            nixcmd="command -v zig >/dev/null 2>&amp;1"/>
+								<!--
+								  zig may be a standalone binary on PATH OR the `ziglang` pip
+								  package (cargo-zigbuild transparently runs `python -m ziglang`
+								  when no `zig` binary exists), so accept EITHER form.
+								-->
+								<probe prop="zigPresent"      wincmd="where zig >NUL 2>NUL || python -m ziglang version >NUL 2>NUL || py -m ziglang version >NUL 2>NUL"            nixcmd="command -v zig >/dev/null 2>&amp;1 || python3 -m ziglang version >/dev/null 2>&amp;1 || python -m ziglang version >/dev/null 2>&amp;1"/>
 								<probe prop="zigbuildPresent" wincmd="where cargo-zigbuild >NUL 2>NUL" nixcmd="command -v cargo-zigbuild >/dev/null 2>&amp;1"/>
 								<!-- effectiveSkipJni = skipRustRuntime OR (cargo absent). -->
 								<condition property="effectiveSkipJni" value="true"><or><istrue value="${skipRustRuntime}"/><isfalse value="${cargoPresent}"/></or></condition>
@@ -361,6 +373,9 @@
 						</goals>
 					</execution>
 				</executions>
+				<configuration>
+					<skipDownloadLicenses>${skipDownloadLicenses}</skipDownloadLicenses>
+				</configuration>
 			</plugin>
 
 			<plugin>
