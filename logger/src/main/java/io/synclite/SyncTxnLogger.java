@@ -20,20 +20,12 @@ import java.nio.file.Path;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 import org.apache.log4j.Logger;
 
 public final class SyncTxnLogger extends TxnLogger {
 
-    private ScheduledExecutorService segmentCreatorService;
-	private final Object txnLock = new Object();
-	private volatile boolean txnInProgress = false;
-
 	public SyncTxnLogger(Path dbPath, SyncLiteOptions options, Logger tracer) throws SQLException {
 		super(dbPath, options, tracer);
-        segmentCreatorService.scheduleAtFixedRate(this::checkups, 0, options.getLogSegmentSwitchDurationThresholdMs(), TimeUnit.MILLISECONDS);
 	}
 
 	static final SyncTxnLogger getInstance(Path dbPath, SyncLiteOptions options, Logger tracer) throws SQLException {
@@ -48,21 +40,6 @@ public final class SyncTxnLogger extends TxnLogger {
 				throw new RuntimeException(e);
 			}
 		});
-	}
-
-
-	@Override
-    protected final void checkups() {  	
-		try  {
-			synchronized (txnLock) {
-				if (!txnInProgress) {
-					super.checkups();
-				}
-			}
-		} catch (SQLException e) {
-			tracer.error("SyncLite Logger failed to perform log segment checkups : ", e);
-			throw new RuntimeException("SyncLite Logger failed to perform log segment checkups : ", e);
-		}		
 	}
 
 	@Override
@@ -82,9 +59,6 @@ public final class SyncTxnLogger extends TxnLogger {
 		CommandLogRecord rec = new CommandLogRecord(commitId, sql, args);
         if (currentTxnLogCount == 0) {
         	//This is the first log record of the txn
-			synchronized (txnLock) {
-				txnInProgress = true;
-			}
         	logBeginTran(rec);
         }
 		appendLogRecord(rec);
@@ -92,18 +66,16 @@ public final class SyncTxnLogger extends TxnLogger {
 
 	@Override
 	void flush(long commitId) throws SQLException {
+		//Persist the pending DML batch to the current log segment. The txn stays
+		//open (no COMMIT marker yet), so we must NOT treat this as a commit
+		//boundary here - the segment is only ever switched from
+		//logCommitAndFlush()/logRollbackAndFlush() after the marker is written.
         executeLogBatch();
         commitLogSegment();
-        this.currentTxnLogCount = 0;
-        this.currentBatchLogCount = 0;
-		synchronized (txnLock) {
-			txnInProgress = false;
-		}
 	}
 
 	@Override
 	protected void terminateInternal() {
-		stopSegmentCreatorService();
 		try {
 			checkups();
 			closeCurrentLogSegment();
@@ -112,52 +84,38 @@ public final class SyncTxnLogger extends TxnLogger {
 		}
 	}
 
-	private final void stopSegmentCreatorService() {
-    	if ((segmentCreatorService != null) && (!segmentCreatorService.isTerminated())) {
-    		segmentCreatorService.shutdown();
-    		try {
-    			segmentCreatorService.awaitTermination(Long.MAX_VALUE, TimeUnit.DAYS);
-    		} catch (InterruptedException e) {
-    			//Ignore
-    		}
-    	}
-	}
-
 	@Override
 	protected void logCommitAndFlush(long commitId) throws SQLException {
-		synchronized (txnLock) {
-			txnInProgress = true;
-			if (this.currentTxnCommitId < commitId) {
-				// Empty txn: emit BEGIN so COMMIT is always bracketed.
-				appendLogRecord(new CommandLogRecord(commitId, "BEGIN", null));
-			}
-			appendLogRecord(new CommandLogRecord(commitId, "COMMIT", null));
-			executeLogBatch();
-			commitLogSegment();
-			//Reset current txn log count to 0 to enable log switching on commit boundary
-			this.currentTxnLogCount = 0;
-			this.currentBatchLogCount = 0;
-			txnInProgress = false;
+		if (this.currentTxnCommitId < commitId) {
+			// Empty txn: emit BEGIN so COMMIT is always bracketed.
+			appendLogRecord(new CommandLogRecord(commitId, "BEGIN", null));
 		}
+		appendLogRecord(new CommandLogRecord(commitId, "COMMIT", null));
+		executeLogBatch();
+		commitLogSegment();
+		//Reset current txn log count to 0 to mark the commit boundary.
+		this.currentTxnLogCount = 0;
+		this.currentBatchLogCount = 0;
+		//Switch the log segment inline, on the committing thread, right after the
+		//COMMIT marker is durably written. A segment is therefore only ever rolled
+		//at a commit boundary. This replaces the earlier background
+		//segmentCreatorService and its associated txnInProgress race window.
 		checkups();
 	}
 
 	@Override
 	protected void logRollbackAndFlush(long commitId) throws SQLException {
-		synchronized (txnLock) {
-			txnInProgress = true;
-			if (this.currentTxnCommitId < commitId) {
-				// Empty txn: emit BEGIN so rollback boundaries are explicit.
-				appendLogRecord(new CommandLogRecord(commitId, "BEGIN", null));
-			}
-			appendLogRecord(new CommandLogRecord(commitId, "ROLLBACK", null));
-			executeLogBatch();
-			undoLogsForCommit(commitId);
-			commitLogSegment();
-			this.currentTxnLogCount = 0;
-			this.currentBatchLogCount = 0;
-			txnInProgress = false;
+		if (this.currentTxnCommitId < commitId) {
+			// Empty txn: emit BEGIN so rollback boundaries are explicit.
+			appendLogRecord(new CommandLogRecord(commitId, "BEGIN", null));
 		}
+		appendLogRecord(new CommandLogRecord(commitId, "ROLLBACK", null));
+		executeLogBatch();
+		undoLogsForCommit(commitId);
+		commitLogSegment();
+		this.currentTxnLogCount = 0;
+		this.currentBatchLogCount = 0;
+		//Switch the log segment inline, on the committing thread, at the commit boundary.
 		checkups();
 	}
 
@@ -167,7 +125,6 @@ public final class SyncTxnLogger extends TxnLogger {
 
 	@Override
 	protected void initLogger() {
-        segmentCreatorService = Executors.newScheduledThreadPool(1);
 	}
 
 }
