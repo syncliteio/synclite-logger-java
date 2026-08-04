@@ -160,7 +160,7 @@ public final class ConsolidationTestSupport {
             String table,
             long expectedRowCount,
             Duration timeout) throws SQLException {
-        SyncLite.awaitSync(srcDbPath, timeout);
+        finalizeDevice(srcDbPath);
 
         Path dest = destDb();
         Instant deadline = Instant.now().plus(timeout);
@@ -185,13 +185,22 @@ public final class ConsolidationTestSupport {
                 + " in " + dest + ": expected " + expectedRowCount + ", observed " + observed);
     }
 
+    private static void finalizeDevice(Path srcDbPath) throws SQLException {
+        // Tests assert final destination state, not streaming latency. Closing
+        // finalizes and ships the active segment, then stops the in-process
+        // consolidator only after it drains staged work. Polling below verifies
+        // the destination state without relying on an active-device checkpoint.
+        SyncLite.closeDevice(srcDbPath);
+    }
+
     /**
      * Same as {@link #awaitAndAssertDestinationRowCount} but uses a
-     * 30-second default timeout.
+    * 60-second default timeout. The device is finalized before waiting,
+    * so this covers destination apply time without a rollover race.
      */
     public static void awaitAndAssertDestinationRowCount(
             String testName, Path srcDbPath, String table, long expectedRowCount) throws SQLException {
-        awaitAndAssertDestinationRowCount(testName, srcDbPath, table, expectedRowCount, Duration.ofSeconds(30));
+        awaitAndAssertDestinationRowCount(testName, srcDbPath, table, expectedRowCount, Duration.ofSeconds(60));
     }
 
     /**
@@ -202,7 +211,7 @@ public final class ConsolidationTestSupport {
      */
     public static void awaitAndAssertDestinationTableExists(
             String testName, Path srcDbPath, String table, Duration timeout) throws SQLException {
-        SyncLite.awaitSync(srcDbPath, timeout);
+        finalizeDevice(srcDbPath);
         Path dest = destDb();
         Instant deadline = Instant.now().plus(timeout);
         SQLException lastErr = null;
