@@ -269,7 +269,7 @@ public class KafkaArchiver extends FSArchiver {
     @Override
     List<Path> getObjectsInReadArchive() throws SQLException {
     	try {
-			ConsumerRecords<String, String> messages = consumer.poll(100);
+			ConsumerRecords<String, String> messages = consumer.poll(java.time.Duration.ofMillis(100));
 	    	//List<String> commandFiles = new ArrayList<String>();
 			for (ConsumerRecord<String, String> message : messages) {								
 				String msg = message.value();

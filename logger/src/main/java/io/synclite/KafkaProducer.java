@@ -37,6 +37,7 @@ import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.KafkaException;
+import org.apache.kafka.common.metrics.KafkaMetric;
 import org.apache.kafka.common.Metric;
 import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.PartitionInfo;
@@ -251,16 +252,18 @@ public class KafkaProducer implements Producer<String,String> {
     }
 
     @Override
-    public void sendOffsetsToTransaction(Map<TopicPartition, OffsetAndMetadata> offsets, String consumerGroupId)
-            throws ProducerFencedException {
-        throw new IllegalStateException("Unsupported operation sendOffsetToTransaction in SyncLite KafkaProducer");
-    }
-
-    @Override
 	public void sendOffsetsToTransaction(Map<TopicPartition, OffsetAndMetadata> offsets,
             ConsumerGroupMetadata groupMetadata) throws ProducerFencedException {
     	throw new IllegalStateException("Unsupported operation sendOffsetToTransaction in SyncLite KafkaProducer");
     }
+
+	@Override
+	public void registerMetricForSubscription(KafkaMetric metric) {
+	}
+
+	@Override
+	public void unregisterMetricFromSubscription(KafkaMetric metric) {
+	}
     
     @Override
     public void beginTransaction() throws ProducerFencedException {
