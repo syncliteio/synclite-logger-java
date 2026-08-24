@@ -25,9 +25,6 @@
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<maven.compiler.source>11</maven.compiler.source>
 		<maven.compiler.target>11</maven.compiler.target>
-        <maven.javadoc.tags>
-            JDBC, Embedded DB, RDBMS, SQLite, DuckDB, Apache Derby, H2, HyperSQL
-        </maven.javadoc.tags>
 		<!--
 			Root of the sibling Rust cargo workspace. The antrun step below
 			copies any synclite_jni native libs it finds under this path
@@ -467,10 +464,6 @@
 						</goals>
 						<configuration>
 							<sourcepath>${project.basedir}/src/main/java</sourcepath>
-							<additionalOptions>
-								<additionalOption>-tag</additionalOption>
-								<additionalOption>${maven.javadoc.tags}</additionalOption>
-							</additionalOptions>
 						</configuration>
 					</execution>
 				</executions>
