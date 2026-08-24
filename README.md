@@ -127,10 +127,10 @@ Requires `cargo` on `PATH`. The pom invokes `cargo build -p synclite-bindings-ja
 
 ```bash
 cd synclite-logger-java/logger
-mvn -Drevision=1.0.0 clean install
+mvn -Drevision=1.1.0 clean install
 ```
 
-Output: `logger/target/synclite-1.0.0.jar`. The same jar runs in either mode at runtime — the embedded native is used when an in-process consolidator is configured, otherwise the pure-Java logger + shipper path runs.
+Output: `logger/target/synclite-1.1.0.jar`. The same jar runs in either mode at runtime — the embedded native is used when an in-process consolidator is configured, otherwise the pure-Java logger + shipper path runs.
 
 ### Without the Rust runtime (logger-only)
 
@@ -138,7 +138,7 @@ Pass `-DskipRustRuntime=true` if you don't have a Rust toolchain (or just want a
 
 ```bash
 cd synclite-logger-java/logger
-mvn -Drevision=1.0.0 -DskipRustRuntime=true clean install
+mvn -Drevision=1.1.0 -DskipRustRuntime=true clean install
 ```
 
 The `*TestWithConsolidator` JUnit suites are auto-skipped under this flag (they need the in-process native).
@@ -154,7 +154,7 @@ cargo build -p synclite-bindings-java --release
 cargo build -p synclite-bindings-java --release --target <triple>
 
 cd ../synclite-logger-java/logger
-mvn -Drevision=1.0.0 clean install
+mvn -Drevision=1.1.0 clean install
 ```
 
 ### Skipping tests
@@ -162,8 +162,8 @@ mvn -Drevision=1.0.0 clean install
 Append `-DskipTests` to skip running JUnit, or `-Dmaven.test.skip=true` to skip test compilation too:
 
 ```bash
-mvn -Drevision=1.0.0 -DskipTests clean install
-mvn -Drevision=1.0.0 -Dmaven.test.skip=true clean install
+mvn -Drevision=1.1.0 -DskipTests clean install
+mvn -Drevision=1.1.0 -Dmaven.test.skip=true clean install
 ```
 
 ### Build accelerators
@@ -174,7 +174,7 @@ None of these are required — they only speed up local iteration and CI.
 
   ```bash
   # 1 thread per CPU core
-  mvn -T 1C -Drevision=1.0.0 -DskipTests clean install
+mvn -T 1C -Drevision=1.1.0 -DskipTests clean install
   ```
 
   Inside the single `logger/` module the speed-up is small (it's one module), but the flag is harmless and useful when you're building the full reactor.
@@ -190,7 +190,7 @@ None of these are required — they only speed up local iteration and CI.
 - **[Maven Daemon (`mvnd`)](https://github.com/apache/maven-mvnd)** — long-running JVM, parallel reactor by default, typically 2–3× faster than vanilla `mvn` on warm caches:
 
   ```bash
-  mvnd -Drevision=1.0.0 -DskipTests clean install
+mvnd -Drevision=1.1.0 -DskipTests clean install
   ```
 
 - **Rust-side `sccache`** — the Rust native build dominates clean builds. Wire up [sccache](https://github.com/mozilla/sccache) on the host (it's transparent to Maven):
@@ -201,7 +201,7 @@ None of these are required — they only speed up local iteration and CI.
   $env:RUSTC_WRAPPER = "sccache"          # PowerShell
   ```
 
-- **Pre-built Rust cdylib** — if you build the Rust workspace yourself first (see [Pre-building the Rust native explicitly](#pre-building-the-rust-native-explicitly) above), then run `mvn -Drevision=1.0.0 -DskipRustRuntime=true clean install`, the antrun bundling step still picks up whatever's already in `synclite-logger-rust/target/release/`. This lets you cache the Rust artifacts independently in CI.
+- **Pre-built Rust cdylib** — if you build the Rust workspace yourself first (see [Pre-building the Rust native explicitly](#pre-building-the-rust-native-explicitly) above), then run `mvn -Drevision=1.1.0 -DskipRustRuntime=true clean install`, the antrun bundling step still picks up whatever's already in `synclite-logger-rust/target/release/`. This lets you cache the Rust artifacts independently in CI.
 
 - **`MAVEN_OPTS` heap tuning** — for the full reactor on a fat box, give Maven more heap to avoid GC churn:
 
@@ -215,7 +215,7 @@ The repo-root build adds one flag on top of everything above: **`-DskipRustCross
 
 ```bash
 # Fastest reactor build on a host without zig — host-arch cdylib only.
-mvn -Drevision=1.0.0 -DskipRustCrossCompile=true -DskipTests clean install
+mvn -Drevision=1.1.0 -DskipRustCrossCompile=true -DskipTests clean install
 ```
 
 For the full platform / runtime zips, see the [top-level build instructions](../README.md#building-from-source) in the SyncLite repo root.
@@ -289,9 +289,9 @@ public class SyncliteSqlitePostgresApp {
 Build and run with the embedded-runtime jar on the classpath:
 
 ```sh
-javac -cp synclite-logger-java/logger/target/synclite-1.0.0.jar \
+javac -cp synclite-logger-java/logger/target/synclite-1.1.0.jar \
       SyncliteSqlitePostgresApp.java
-java  -cp synclite-logger-java/logger/target/synclite-1.0.0.jar:. \
+java  -cp synclite-logger-java/logger/target/synclite-1.1.0.jar:. \
       SyncliteSqlitePostgresApp
 ```
 
