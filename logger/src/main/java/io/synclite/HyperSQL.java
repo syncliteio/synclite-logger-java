@@ -123,4 +123,28 @@ public static synchronized final void initialize(java.nio.file.Path dbPath, java
 SyncLite.initialize(DeviceType.HYPERSQL, dbPath, propsPath, deviceName, destination);
 }
 
+public static synchronized final void initialize(java.nio.file.Path dbPath, java.util.List<DestinationOptions> destinations) throws java.sql.SQLException {
+SyncLite.initialize(DeviceType.HYPERSQL, dbPath, destinations);
+}
+
+public static synchronized final void initialize(java.nio.file.Path dbPath, String deviceName, java.util.List<DestinationOptions> destinations) throws java.sql.SQLException {
+SyncLite.initialize(DeviceType.HYPERSQL, dbPath, deviceName, destinations);
+}
+
+public static synchronized final void initialize(java.nio.file.Path dbPath, SyncLiteOptions options, java.util.List<DestinationOptions> destinations) throws java.sql.SQLException {
+SyncLite.initialize(DeviceType.HYPERSQL, dbPath, options, destinations);
+}
+
+public static synchronized final void initialize(java.nio.file.Path dbPath, SyncLiteOptions options, String deviceName, java.util.List<DestinationOptions> destinations) throws java.sql.SQLException {
+SyncLite.initialize(DeviceType.HYPERSQL, dbPath, options, deviceName, destinations);
+}
+
+public static synchronized final void initialize(java.nio.file.Path dbPath, java.nio.file.Path propsPath, java.util.List<DestinationOptions> destinations) throws java.sql.SQLException {
+SyncLite.initialize(DeviceType.HYPERSQL, dbPath, propsPath, destinations);
+}
+
+public static synchronized final void initialize(java.nio.file.Path dbPath, java.nio.file.Path propsPath, String deviceName, java.util.List<DestinationOptions> destinations) throws java.sql.SQLException {
+SyncLite.initialize(DeviceType.HYPERSQL, dbPath, propsPath, deviceName, destinations);
+}
+
 }

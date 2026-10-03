@@ -31,6 +31,7 @@ final class NativeConsolidator {
      * which may be {@code null} when the destination does not need them.
      */
     static native long nativeSpawnConsolidator(
+            String dbPath,
             String workDir,
             String deviceDataRoot,
             String deviceId,
@@ -44,6 +45,8 @@ final class NativeConsolidator {
             String dstSchema,
             String metadataStore,
             String stageDir,
+            int dstIndex,
+            int destinationCount,
             long devicePollingIntervalMs);
 
     /** Notify the consolidator that a new segment has landed at {@code stagePath}. */
@@ -96,18 +99,18 @@ final class NativeConsolidator {
     static native void nativeReinitialize(String dbPath);
 
     /**
-     * Block until the consolidator has applied every commit produced by
-     * the device, or {@code timeoutMs} elapses.
+     * Block until every configured destination has applied every commit
+     * produced by the device, or {@code timeoutMs} elapses.
      */
     static native void nativeAwaitSync(String dbPath, long timeoutMs);
 
     /**
-     * Block until the consolidator's applied commit-id reaches
-     * {@code targetCommitId}, or {@code timeoutMs} elapses. The caller
-     * supplies the target because the Rust runtime cannot crack open
-     * the source DB for JDBC-bridge backends (Derby / H2 / HyperSQL)
-     * where {@code synclite_txn} lives inside the backend's own DB
-     * file. A target of 0 / negative is treated as a no-wait success.
+     * Block until the minimum applied commit-id across every configured
+     * destination reaches {@code targetCommitId}, or {@code timeoutMs}
+     * elapses. The caller supplies the target because the Rust runtime
+     * cannot crack open the source DB for JDBC-bridge backends (Derby /
+     * H2 / HyperSQL) where {@code synclite_txn} lives inside the backend's
+     * own DB file. A target of 0 / negative is treated as a no-wait success.
      */
     static native void nativeAwaitAppliedCommit(String dbPath, long targetCommitId, long timeoutMs);
 

@@ -11,7 +11,7 @@ package io.synclite;
 
 /**
  * Unchecked exception raised by the native runtime layer. Propagated
- * from JNI via {@code env.throw_new("io/synclite/runtime/SyncLiteException", ...)}.
+ * from JNI via {@code env.throw_new("io/synclite/SyncLiteException", ...)}.
  */
 public class SyncLiteException extends RuntimeException {
     private static final long serialVersionUID = 1L;

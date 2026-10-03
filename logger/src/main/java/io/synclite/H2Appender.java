@@ -124,5 +124,29 @@ public static synchronized final void initialize(java.nio.file.Path dbPath, java
 SyncLite.initialize(DeviceType.H2_APPENDER, dbPath, propsPath, deviceName, destination);
 }
 
+public static synchronized final void initialize(java.nio.file.Path dbPath, java.util.List<DestinationOptions> destinations) throws java.sql.SQLException {
+SyncLite.initialize(DeviceType.H2_APPENDER, dbPath, destinations);
+}
+
+public static synchronized final void initialize(java.nio.file.Path dbPath, String deviceName, java.util.List<DestinationOptions> destinations) throws java.sql.SQLException {
+SyncLite.initialize(DeviceType.H2_APPENDER, dbPath, deviceName, destinations);
+}
+
+public static synchronized final void initialize(java.nio.file.Path dbPath, SyncLiteOptions options, java.util.List<DestinationOptions> destinations) throws java.sql.SQLException {
+SyncLite.initialize(DeviceType.H2_APPENDER, dbPath, options, destinations);
+}
+
+public static synchronized final void initialize(java.nio.file.Path dbPath, SyncLiteOptions options, String deviceName, java.util.List<DestinationOptions> destinations) throws java.sql.SQLException {
+SyncLite.initialize(DeviceType.H2_APPENDER, dbPath, options, deviceName, destinations);
+}
+
+public static synchronized final void initialize(java.nio.file.Path dbPath, java.nio.file.Path propsPath, java.util.List<DestinationOptions> destinations) throws java.sql.SQLException {
+SyncLite.initialize(DeviceType.H2_APPENDER, dbPath, propsPath, destinations);
+}
+
+public static synchronized final void initialize(java.nio.file.Path dbPath, java.nio.file.Path propsPath, String deviceName, java.util.List<DestinationOptions> destinations) throws java.sql.SQLException {
+SyncLite.initialize(DeviceType.H2_APPENDER, dbPath, propsPath, deviceName, destinations);
+}
+
 }
 

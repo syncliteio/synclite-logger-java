@@ -13,8 +13,10 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * Destination configuration consumed by
- * {@link SyncLite#initialize(io.synclite.DeviceType, java.nio.file.Path, String, DestinationOptions)}.
+ * Destination configuration consumed by the single- and multi-destination
+ * {@link SyncLite#initialize(io.synclite.DeviceType, java.nio.file.Path, String, DestinationOptions)}
+ * and {@link SyncLite#initialize(
+ * io.synclite.DeviceType, java.nio.file.Path, String, java.util.List)} APIs.
  *
  * <p>Field semantics mirror the Rust SDK's {@code DestinationOptions}:
  * {@code database} is required for {@link DstType#POSTGRES} and
