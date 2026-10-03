@@ -22,12 +22,15 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.sql.Connection;
 import java.sql.DriverManager;
-import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.OptionalLong;
 import java.util.Properties;
@@ -66,11 +69,10 @@ public class SyncLite extends org.sqlite.JDBC {
 		loadOptionalDriver("org.apache.derby.jdbc.EmbeddedDriver");
 		loadOptionalDriver("org.h2.Driver");
 		loadOptionalDriver("org.hsqldb.jdbc.JDBCDriver");
-		// PostgreSQL driver is needed by awaitSync to poll the destination's
-		// synclite_checkpoint table when dstType=POSTGRES. JDBC 4 SPI
-		// auto-discovery via META-INF/services is unreliable inside the
-		// shaded fat jar (assembly merge can drop the service descriptor),
-		// so register explicitly.
+		// Keep the bundled PostgreSQL driver available to applications that
+		// verify destination data directly. JDBC 4 SPI auto-discovery via
+		// META-INF/services is unreliable inside the shaded fat jar because
+		// assembly can drop the service descriptor.
 		loadOptionalDriver("org.postgresql.Driver");
 
 		instance = new SQLite();
@@ -173,7 +175,18 @@ public class SyncLite extends org.sqlite.JDBC {
 	}
 
 	public static boolean isValidURL(String url) {
-		return url != null && url.toLowerCase().startsWith(PREFIX);
+		return findDriver(url) != null;
+	}
+
+	/**
+	 * Report support for the same SyncLite URL prefixes that
+	 * {@link #connect(String, Properties)} can route. Connection pools such as
+	 * HikariCP call this method before invoking {@code connect}; inheriting
+	 * Xerial's implementation would only accept {@code jdbc:sqlite:} URLs.
+	 */
+	@Override
+	public boolean acceptsURL(String url) {
+		return isValidURL(url);
 	}
 
 	protected boolean checkDeviceURL(String url) {
@@ -185,18 +198,28 @@ public class SyncLite extends org.sqlite.JDBC {
 	}
 
 	public static SQLiteConnection createConnection(String url, Properties prop) throws SQLException {
-		url = url.trim();
-		String[] tokens = url.split(":");
-		if (tokens.length <= 2) {
-			return null;
-		}        
-		String prefix = tokens[0] + ":" + tokens[1] + ":";        
-		SyncLite instance = INSTANCES_BY_PRREFIXES.get(prefix);
-
+		SyncLite instance = findDriver(url);
 		if (instance == null) {
 			return null;
-		}        
+		}
+		url = url.trim();
 		return instance.createSyncLiteConnection(url, prop);
+	}
+
+	private static SyncLite findDriver(String url) {
+		if (url == null) {
+			return null;
+		}
+		String trimmedUrl = url.trim();
+		int firstSeparator = trimmedUrl.indexOf(':');
+		int secondSeparator = firstSeparator < 0
+				? -1
+				: trimmedUrl.indexOf(':', firstSeparator + 1);
+		if (secondSeparator < 0) {
+			return null;
+		}
+		String prefix = trimmedUrl.substring(0, secondSeparator + 1).toLowerCase(Locale.ROOT);
+		return INSTANCES_BY_PRREFIXES.get(prefix);
 	}
 
 	protected SQLiteConnection createSyncLiteConnection(String url, Properties prop) throws SQLException {
@@ -359,7 +382,11 @@ public class SyncLite extends org.sqlite.JDBC {
 				prepareSQLiteSchemaFile(dbPath, sqliteSchemaFilePath, tracer, options);
 			}
 
-			Path defaultLocalStageDirectory = syncLiteDirPath;
+			// The .synclite sidecar stores logger-owned metadata, traces, and
+			// active log segments. It is not a staging destination. Keep the
+			// no-config/JDBC auto-initialization path aligned with every other
+			// runtime entry point by staging under the canonical job directory.
+			Path defaultLocalStageDirectory = defaultStageDir();
 
 			if (options.getNumDestinations() == 0) {
 				options.setDestinationType(1, DestinationType.FS);
@@ -441,43 +468,68 @@ public class SyncLite extends org.sqlite.JDBC {
 		return logger;
 	}
 
-	public static final void closeAllDevices() throws SQLException {    	
-		SQLLogger.closeAllDevices();    	
+	public static final void closeAllDevices() throws SQLException {
+		SQLException firstError = null;
+		for (Path db : DEVICES.keySet().toArray(new Path[0])) {
+			try {
+				closeDevice(db);
+			} catch (SQLException e) {
+				if (firstError == null) {
+					firstError = e;
+				} else {
+					firstError.addSuppressed(e);
+				}
+			}
+		}
+		try {
+			SQLLogger.closeAllDevices();
+		} catch (SQLException e) {
+			if (firstError == null) {
+				firstError = e;
+			} else {
+				firstError.addSuppressed(e);
+			}
+		}
+		if (firstError != null) {
+			throw firstError;
+		}
 	}
 
 	public static final void closeDevice(Path dbPath) throws SQLException {
-		Path absDb = dbPath.toAbsolutePath();
-
-		SQLException loggerErr = null;
-
-		Object lock = dbInitializationLocks.computeIfAbsent(dbPath, p -> new Object());
+		Path absDb = dbPath.toAbsolutePath().normalize();
+		Object lock = dbInitializationLocks.computeIfAbsent(absDb, p -> new Object());
 		synchronized (lock) {
+			SQLException loggerErr = null;
 			try {
-				deleteSQLiteSchemaFileIfExists(dbPath);
+				deleteSQLiteSchemaFileIfExists(absDb);
 				SQLLogger.closeDevice(absDb);
 			} catch (SQLException e) {
 				loggerErr = e;
 			}
-		}
 
-		// Tear down the in-process consolidator if this device was
-		// initialized with a DestinationOptions overload.
-		DeviceState state = DEVICES.remove(absDb);
-		if (state != null) {
-			try {
-				NativeConsolidator.nativeStopConsolidator(state.handle);
-			} catch (RuntimeException e) {
-				if (loggerErr != null) {
-					loggerErr.addSuppressed(e);
-				} else {
-					throw new SQLException(
-							"failed to stop native consolidator: " + e.getMessage(), e);
+			// Tear down every in-process consolidator while retaining the same
+			// per-device lock used by initialize() and awaitSync().
+			DeviceState state = DEVICES.remove(absDb);
+			if (state != null) {
+				for (DestinationState destination : state.destinations) {
+					try {
+						NativeConsolidator.nativeStopConsolidator(destination.handle);
+					} catch (RuntimeException e) {
+						SQLException stopError = new SQLException(
+								"failed to stop native consolidator for destination "
+										+ destination.index + ": " + e.getMessage(), e);
+						if (loggerErr == null) {
+							loggerErr = stopError;
+						} else {
+							loggerErr.addSuppressed(stopError);
+						}
+					}
 				}
 			}
-		}
 
-		if (loggerErr != null) {
-			throw loggerErr;
+			if (loggerErr != null) {
+				throw loggerErr;
+			}
 		}
 	}
 
@@ -615,7 +667,8 @@ public class SyncLite extends org.sqlite.JDBC {
 			DestinationOptions destination) throws SQLException {
 		SyncLiteOptions opts = new SyncLiteOptions();
 		applyRuntimeStageDefaults(opts, dbPath);
-		doInitializeWithDestination(deviceType, dbPath, opts, destination, null);
+		doInitialize(deviceType, dbPath, opts,
+				Collections.singletonList(destination), null);
 	}
 
 	public static void initialize(
@@ -626,7 +679,8 @@ public class SyncLite extends org.sqlite.JDBC {
 		SyncLiteOptions opts = new SyncLiteOptions();
 		opts.setDeviceName(deviceName);
 		applyRuntimeStageDefaults(opts, dbPath);
-		doInitializeWithDestination(deviceType, dbPath, opts, destination, null);
+		doInitialize(deviceType, dbPath, opts,
+				Collections.singletonList(destination), null);
 	}
 
 	public static void initialize(
@@ -635,7 +689,8 @@ public class SyncLite extends org.sqlite.JDBC {
 			SyncLiteOptions options,
 			DestinationOptions destination) throws SQLException {
 		applyRuntimeStageDefaults(options, dbPath);
-		doInitializeWithDestination(deviceType, dbPath, options, destination, null);
+		doInitialize(deviceType, dbPath, options,
+				Collections.singletonList(destination), null);
 	}
 
 	public static void initialize(
@@ -646,7 +701,8 @@ public class SyncLite extends org.sqlite.JDBC {
 			DestinationOptions destination) throws SQLException {
 		options.setDeviceName(deviceName);
 		applyRuntimeStageDefaults(options, dbPath);
-		doInitializeWithDestination(deviceType, dbPath, options, destination, null);
+		doInitialize(deviceType, dbPath, options,
+				Collections.singletonList(destination), null);
 	}
 
 	public static void initialize(
@@ -657,7 +713,8 @@ public class SyncLite extends org.sqlite.JDBC {
 		SyncLiteOptions opts = SyncLiteOptions.loadFromFile(propsPath);
 		Path workDir = workDirFromProperties(propsPath);
 		applyRuntimeStageDefaults(opts, dbPath);
-		doInitializeWithDestination(deviceType, dbPath, opts, destination, workDir);
+		doInitialize(deviceType, dbPath, opts,
+				Collections.singletonList(destination), workDir);
 	}
 
 	public static void initialize(
@@ -670,7 +727,85 @@ public class SyncLite extends org.sqlite.JDBC {
 		Path workDir = workDirFromProperties(propsPath);
 		opts.setDeviceName(deviceName);
 		applyRuntimeStageDefaults(opts, dbPath);
-		doInitializeWithDestination(deviceType, dbPath, opts, destination, workDir);
+		doInitialize(deviceType, dbPath, opts,
+				Collections.singletonList(destination), workDir);
+	}
+
+	/**
+	 * Initialize one device with one or more destinations. The list order is
+	 * stable: element zero is destination 1, element one is destination 2, and
+	 * so on. All entries are validated before the logger is initialized, then
+	 * destination workers are created sequentially. If any step fails, every
+	 * worker already created by this call is stopped and the logger is closed.
+	 */
+	public static void initialize(
+			DeviceType deviceType,
+			Path dbPath,
+			List<DestinationOptions> destinations) throws SQLException {
+		List<DestinationOptions> checked = validatedDestinationCopy(destinations);
+		SyncLiteOptions opts = new SyncLiteOptions();
+		applyRuntimeStageDefaults(opts, dbPath);
+		doInitialize(deviceType, dbPath, opts, checked, null);
+	}
+
+	public static void initialize(
+			DeviceType deviceType,
+			Path dbPath,
+			String deviceName,
+			List<DestinationOptions> destinations) throws SQLException {
+		List<DestinationOptions> checked = validatedDestinationCopy(destinations);
+		SyncLiteOptions opts = new SyncLiteOptions();
+		opts.setDeviceName(deviceName);
+		applyRuntimeStageDefaults(opts, dbPath);
+		doInitialize(deviceType, dbPath, opts, checked, null);
+	}
+
+	public static void initialize(
+			DeviceType deviceType,
+			Path dbPath,
+			SyncLiteOptions options,
+			List<DestinationOptions> destinations) throws SQLException {
+		List<DestinationOptions> checked = validatedDestinationCopy(destinations);
+		applyRuntimeStageDefaults(options, dbPath);
+		doInitialize(deviceType, dbPath, options, checked, null);
+	}
+
+	public static void initialize(
+			DeviceType deviceType,
+			Path dbPath,
+			SyncLiteOptions options,
+			String deviceName,
+			List<DestinationOptions> destinations) throws SQLException {
+		List<DestinationOptions> checked = validatedDestinationCopy(destinations);
+		options.setDeviceName(deviceName);
+		applyRuntimeStageDefaults(options, dbPath);
+		doInitialize(deviceType, dbPath, options, checked, null);
+	}
+
+	public static void initialize(
+			DeviceType deviceType,
+			Path dbPath,
+			Path propsPath,
+			List<DestinationOptions> destinations) throws SQLException {
+		List<DestinationOptions> checked = validatedDestinationCopy(destinations);
+		SyncLiteOptions opts = SyncLiteOptions.loadFromFile(propsPath);
+		Path workDir = workDirFromProperties(propsPath);
+		applyRuntimeStageDefaults(opts, dbPath);
+		doInitialize(deviceType, dbPath, opts, checked, workDir);
+	}
+
+	public static void initialize(
+			DeviceType deviceType,
+			Path dbPath,
+			Path propsPath,
+			String deviceName,
+			List<DestinationOptions> destinations) throws SQLException {
+		List<DestinationOptions> checked = validatedDestinationCopy(destinations);
+		SyncLiteOptions opts = SyncLiteOptions.loadFromFile(propsPath);
+		Path workDir = workDirFromProperties(propsPath);
+		opts.setDeviceName(deviceName);
+		applyRuntimeStageDefaults(opts, dbPath);
+		doInitialize(deviceType, dbPath, opts, checked, workDir);
 	}
 
 	/**
@@ -739,224 +874,44 @@ public class SyncLite extends org.sqlite.JDBC {
 	}
 
 	/**
-	 * Block until the in-process consolidator has applied every commit
+	 * Block until every configured destination has applied every commit
 	 * the device has produced, or {@code timeout} elapses.
 	 *
-	 * <p>Source-of-truth contract (applies to every destination type):
-	 * <ul>
-	 *   <li><b>Source side</b> &mdash; latest commit id is always
-	 *       {@code MAX(commit_id)} from the user DB file's
-	 *       {@code synclite_txn} table. See
-	 *       {@link #readSourceCommitIdForAwaitSync(Path)}.</li>
-	 *   <li><b>Applied side</b> &mdash; latest applied commit id is
-	 *       read from the destination's {@code synclite_checkpoint}
-	 *       table (the consolidator updates it co-transactionally with
-	 *       each apply batch). We open a fresh JDBC connection to the
-	 *       destination here, qualified by the configured schema if any,
-	 *       and poll {@code MAX(commit_id)} until it catches up. This
-	 *       is the only place that gives a crash-safe, restart-safe
-	 *       answer &mdash; the consolidator's local-mirror checkpoint
-	 *       cannot.</li>
-	 * </ul>
-	 *
-	 * <p>If a device was initialized via the logger-only overload (no
-	 * {@link DestinationOptions}) we have no destination to poll and
-	 * fall back to {@code nativeAwaitAppliedCommit}, which is good
-	 * enough because in that mode there IS no in-process apply.
+	 * <p>Java reads the source-side target commit id because JDBC-bridge
+	 * devices such as Derby, H2, and HyperSQL cannot be inspected by the
+	 * native runtime. Waiting is implemented by the Rust logger: it discovers
+	 * all configured destinations and compares the target with the minimum
+	 * persisted destination checkpoint. A missing, unreachable, or lagging
+	 * destination therefore prevents this method from returning successfully.
+	 * All destinations share the single timeout budget supplied here.
 	 */
 	public static void awaitSync(Path dbPath, Duration timeout) throws SQLException {
-		Path absDb = dbPath.toAbsolutePath();
-		long targetCommitId = readSourceCommitIdForAwaitSync(absDb);
-		if (targetCommitId <= 0L) {
-			// No source-side commits => nothing to wait for. Legitimate
-			// fast-path (e.g. device opened but no writes), not an error.
-			return;
-		}
-		long timeoutMs = (timeout == null || timeout.isNegative())
-				? 0L : timeout.toMillis();
-
-		DeviceState state = DEVICES.get(absDb);
-		if (state != null && state.dstType != null) {
-			awaitSyncOnDestination(absDb, state, targetCommitId, timeoutMs);
-			return;
-		}
-		// Logger-only mode: no in-process consolidator was spawned, and
-		// no destination to poll. Hand off to native (which itself will
-		// just confirm there's no pending stage and return).
-		try {
-			NativeConsolidator.nativeAwaitAppliedCommit(absDb.toString(), targetCommitId, timeoutMs);
-		} catch (RuntimeException e) {
-			throw new SQLException("awaitSync failed: " + e.getMessage(), e);
-		}
-	}
-
-	/**
-	 * Poll the destination's {@code synclite_checkpoint} table until
-	 * {@code commit_id >= targetCommitId} for this device, or
-	 * {@code timeoutMs} elapses.
-	 *
-	 * <p>Behavior across destination types:
-	 * <ul>
-	 *   <li>{@link DstType#POSTGRES POSTGRES}: connects via the bundled
-	 *       PG JDBC driver, qualifies the checkpoint table with the
-	 *       configured schema.</li>
-	 *   <li>{@link DstType#DUCKDB DUCKDB}: opens the destination file
-	 *       read-only via {@code jdbc:duckdb:...}, qualifies with the
-	 *       configured schema if any.</li>
-	 *   <li>{@link DstType#SQLITE SQLITE}: opens the destination file
-	 *       read-only via {@code jdbc:sqlite:...?open_mode=1}, no
-	 *       schema concept.</li>
-	 * </ul>
-	 *
-	 * <p>A missing checkpoint table (or zero rows) is treated as
-	 * "0 applied"; the loop keeps waiting because the consolidator
-	 * creates and seeds the table on its first successful apply. The
-	 * timeout error includes whether the table existed plus the last
-	 * underlying SQL error, so you can tell "consolidator never started"
-	 * from "consolidator is behind".
-	 */
-	private static void awaitSyncOnDestination(Path absDb, DeviceState state,
-			long targetCommitId, long timeoutMs) throws SQLException {
-		String jdbcUrl = buildDestinationJdbcUrl(state);
-		if (jdbcUrl == null) {
-			throw new SQLException("awaitSync: cannot derive JDBC URL for destination type "
-					+ state.dstType + " (connection_string=" + state.dstConnectionString + ")");
-		}
-		String checkpointTable = qualifiedCheckpointTable(state);
-		String selectSql = "SELECT MAX(commit_id) FROM " + checkpointTable
-				+ " WHERE synclite_device_id = ? AND synclite_device_name = ?";
-
-		long deadlineNanos = timeoutMs <= 0L
-				? Long.MAX_VALUE
-				: System.nanoTime() + Duration.ofMillis(timeoutMs).toNanos();
-		long appliedCommitId = 0L;
-		boolean checkpointTableMissing = true;
-		SQLException lastError = null;
-		while (true) {
-			try (Connection conn = DriverManager.getConnection(jdbcUrl);
-					PreparedStatement ps = conn.prepareStatement(selectSql)) {
-				ps.setString(1, state.deviceId == null ? "" : state.deviceId);
-				ps.setString(2, state.deviceName == null ? "" : state.deviceName);
-				try (ResultSet rs = ps.executeQuery()) {
-					checkpointTableMissing = false;
-					if (rs.next()) {
-						appliedCommitId = rs.getLong(1);
-						if (rs.wasNull()) {
-							appliedCommitId = 0L;
-						}
-					}
-				}
-				lastError = null;
-			} catch (SQLException e) {
-				// Most common transient: checkpoint relation does not exist
-				// yet (PG SQLSTATE 42P01, SQLite/DuckDB "no such table") —
-				// the consolidator creates it on first successful apply.
-				// Other errors (connectivity, auth, file lock) propagate
-				// after timeout.
-				lastError = e;
+		Path absDb = dbPath.toAbsolutePath().normalize();
+		Object lock = dbInitializationLocks.computeIfAbsent(absDb, p -> new Object());
+		synchronized (lock) {
+			DeviceState state = DEVICES.get(absDb);
+			if (state == null || state.destinations.isEmpty()) {
+				throw new SQLException(
+						"awaitSync: device is not initialized with embedded destinations: "
+								+ absDb);
 			}
-			if (appliedCommitId >= targetCommitId) {
+			long targetCommitId = readSourceCommitIdForAwaitSync(absDb);
+			if (targetCommitId <= 0L) {
+				// No source-side commits => nothing to wait for. Legitimate
+				// fast-path (e.g. device opened but no writes), not an error.
 				return;
 			}
-			if (System.nanoTime() >= deadlineNanos) {
-				StringBuilder msg = new StringBuilder("awaitSync: timed out after ")
-						.append(timeoutMs).append("ms waiting for destination ")
-						.append(state.dstType)
-						.append(" (target_commit_id=").append(targetCommitId)
-						.append(", applied_commit_id=").append(appliedCommitId)
-						.append(", db=").append(absDb)
-						.append(", checkpoint_table=").append(checkpointTable)
-						.append(")");
-				if (checkpointTableMissing) {
-					msg.append(" \u2014 ").append(checkpointTable)
-							.append(" does not exist yet; consolidator has not completed a successful apply.");
-				}
-				if (lastError != null) {
-					msg.append(" \u2014 last error: ").append(lastError.getMessage());
-					throw new SQLException(msg.toString(), lastError);
-				}
-				throw new SQLException(msg.toString());
-			}
+			// Preserve the established Java API contract: null, negative, and
+			// zero durations wait without a deadline. JNI uses -1 as that sentinel.
+			long timeoutMs = (timeout == null || timeout.isNegative() || timeout.isZero())
+					? -1L : Math.max(1L, timeout.toMillis());
 			try {
-				Thread.sleep(200L);
-			} catch (InterruptedException ie) {
-				Thread.currentThread().interrupt();
-				throw new SQLException("awaitSync: interrupted while waiting", ie);
+				NativeConsolidator.nativeAwaitAppliedCommit(
+						absDb.toString(), targetCommitId, timeoutMs);
+			} catch (RuntimeException e) {
+				throw new SQLException("awaitSync failed: " + e.getMessage(), e);
 			}
 		}
-	}
-
-	/**
-	 * Build a JDBC URL pointing at the destination for read-only
-	 * polling. Accepts the user's raw {@code DestinationOptions#connectionString}
-	 * in whichever form they supplied (JDBC URL, libpq URL, or bare file path).
-	 */
-	private static String buildDestinationJdbcUrl(DeviceState state) {
-		String raw = state.dstConnectionString;
-		if (raw == null) {
-			return null;
-		}
-		String trimmed = raw.trim();
-		if (trimmed.isEmpty()) {
-			return null;
-		}
-		switch (state.dstType) {
-			case POSTGRES:
-				if (trimmed.regionMatches(true, 0, "jdbc:", 0, 5)) {
-					return trimmed;
-				}
-				if (trimmed.regionMatches(true, 0, "postgresql://", 0, 13)
-						|| trimmed.regionMatches(true, 0, "postgres://", 0, 11)) {
-					return "jdbc:" + trimmed;
-				}
-				return trimmed;
-			case DUCKDB:
-				if (trimmed.regionMatches(true, 0, "jdbc:duckdb:", 0, 12)) {
-					return trimmed;
-				}
-				return "jdbc:duckdb:" + trimmed;
-			case SQLITE:
-				// Read-only open avoids any lock contention with the
-				// consolidator's writer connection.
-				if (trimmed.regionMatches(true, 0, "jdbc:sqlite:", 0, 12)) {
-					return trimmed.contains("?")
-							? trimmed
-							: trimmed + "?open_mode=1";
-				}
-				return "jdbc:sqlite:" + trimmed.replace('\\', '/') + "?open_mode=1";
-			default:
-				return null;
-		}
-	}
-
-	/**
-	 * Return the destination's {@code synclite_checkpoint} table name,
-	 * qualified by schema where supported. Identifier quoting matches
-	 * the destination engine's conventions (double-quote for PG/DuckDB
-	 * standard SQL; SQLite is unqualified single-DB so no quoting needed).
-	 */
-	private static String qualifiedCheckpointTable(DeviceState state) {
-		String schema = state.dstSchema == null ? null : state.dstSchema.trim();
-		switch (state.dstType) {
-			case POSTGRES:
-				if (schema == null || schema.isEmpty()) {
-					return "synclite_checkpoint";
-				}
-				return quoteSqlIdent(schema) + "." + quoteSqlIdent("synclite_checkpoint");
-			case DUCKDB:
-				if (schema == null || schema.isEmpty()) {
-					return "synclite_checkpoint";
-				}
-				return quoteSqlIdent(schema) + "." + quoteSqlIdent("synclite_checkpoint");
-			case SQLITE:
-			default:
-				return "synclite_checkpoint";
-		}
-	}
-
-	/** Quote a SQL identifier with double quotes (standard SQL; works on PG and DuckDB). */
-	private static String quoteSqlIdent(String ident) {
-		return "\"" + ident.replace("\"", "\"\"") + "\"";
 	}
 
 	/**
@@ -1103,119 +1058,153 @@ public class SyncLite extends org.sqlite.JDBC {
 
 	// ---------- core ----------------------------------------------------
 
-	private static void doInitializeWithDestination(
+	private static void doInitialize(
 			DeviceType deviceType,
 			Path dbPath,
 			SyncLiteOptions options,
-			DestinationOptions destination,
+			List<DestinationOptions> destinations,
 			Path workDirOverride) throws SQLException {
 
 		Objects.requireNonNull(deviceType, "deviceType");
 		Objects.requireNonNull(dbPath, "dbPath");
-		Objects.requireNonNull(destination, "destination");
+		List<DestinationOptions> checkedDestinations = validatedDestinationCopy(destinations);
 
-		Path absDb = dbPath.toAbsolutePath();
-		if (DEVICES.containsKey(absDb)) {
-			return; // idempotent
-		}
-
-		Path stageDir = options.getLocalDataStageDirectory(1);
-		Path workDir  = (workDirOverride != null) ? workDirOverride : defaultWorkDir();
-		try {
-			Files.createDirectories(stageDir);
-			Files.createDirectories(workDir);
-		} catch (IOException e) {
-			throw new SQLException("failed to create stage/work directories", e);
-		}
-
-		// 1. Bring up the Java logger.
-		initialize(deviceType, absDb, options);
-
-		// 2. Resolve uuid + device name the logger persisted.
-		String deviceId = readDeviceUuidFromMetadata(absDb);
-		String deviceName = options.getDeviceName();
-		if (deviceName == null || deviceName.isEmpty()) {
-			deviceName = readDeviceNameFromMetadata(absDb, "");
-		}
-		Path perDeviceStage = (deviceName == null || deviceName.isEmpty())
-				? stageDir.resolve("synclite-" + deviceId)
-				: stageDir.resolve("synclite-" + deviceName + "-" + deviceId);
-
-		// Periodic stage-scan tick. Mirrors the Java consolidator's
-		// `device-polling-interval-ms` knob: the in-process Rust
-		// consolidator scans `perDeviceStage` for unapplied segments
-		// every tick, providing the safety floor below the push-style
-		// `nativeNotifyStagePath` notifications that some Java
-		// shipping paths skip on Windows.
-		long devicePollingIntervalMs = Long.getLong(
-				"synclite.device.polling.interval.ms", 500L);
-
-		// 3. Spawn the Rust consolidator pointed at the same stage dir.
-		long handle;
-		try {
-			handle = NativeConsolidator.nativeSpawnConsolidator(
-					workDir.toString(),
-					workDir.toString(),
-					deviceId,
-					deviceName == null ? "" : deviceName,
-					deviceType.name(),
-					databaseNameOf(absDb),
-					destination.dstType().name(),
-					destination.connectionString(),
-					destination.syncMode().name(),
-					destination.database().orElse(null),
-					destination.schema().orElse(null),
-					"DESTINATION",
-					perDeviceStage.toString(),
-					devicePollingIntervalMs);
-		} catch (RuntimeException e) {
-			try { closeDevice(absDb); } catch (Exception ignore) {}
-			throw new SQLException(
-					"failed to spawn native consolidator: " + e.getMessage(), e);
-		}
-
-		// 4. Catch up on segments left behind by a previous run.
-		try {
-			if (Files.isDirectory(perDeviceStage)) {
-				Path backup = perDeviceStage.resolve(absDb.getFileName().toString() + ".synclite.backup");
-				Path metadata = perDeviceStage.resolve(absDb.getFileName().toString() + ".synclite.metadata");
-				if (Files.exists(backup) && Files.exists(metadata)) {
-					NativeConsolidator.nativeNotifyBootstrapReady(
-							handle, backup.toString(), metadata.toString());
-				}
-				NativeConsolidator.nativeCatchUpStageDir(handle, perDeviceStage.toString());
+		Path absDb = dbPath.toAbsolutePath().normalize();
+		Object lock = dbInitializationLocks.computeIfAbsent(absDb, p -> new Object());
+		synchronized (lock) {
+			if (DEVICES.containsKey(absDb)) {
+				return; // idempotent
 			}
-		} catch (RuntimeException e) {
-			safeStopAndClose(handle, absDb);
-			throw new SQLException(
-					"failed to catch up stage directory " + perDeviceStage + ": " + e.getMessage(), e);
-		}
 
-		// 5. Pre-create the per-device stage subdir. The Rust
-		// consolidator scans this directory periodically (controlled
-		// by `synclite.device.polling.interval.ms`) and applies any
-		// segment the upstream shipper drops in. No host-side
-		// WatchService is needed.
-		try {
-			Files.createDirectories(perDeviceStage);
-		} catch (IOException e) {
-			safeStopAndClose(handle, absDb);
-			throw new SQLException(
-					"failed to create per-device stage " + perDeviceStage + ": " + e.getMessage(), e);
-		}
+			Path stageDir = options.getLocalDataStageDirectory(1);
+			Path workDir = (workDirOverride != null) ? workDirOverride : defaultWorkDir();
+			List<DestinationState> destinationStates = new ArrayList<>();
+			boolean loggerStartedByCall = false;
+			try {
+				Files.createDirectories(stageDir);
+				Files.createDirectories(workDir);
 
-		DEVICES.put(absDb, new DeviceState(
-				handle,
-				deviceType,
-				destination.dstType(),
-				destination.connectionString(),
-				destination.schema().orElse(null),
-				deviceId,
-				deviceName == null ? "" : deviceName));
-		installShutdownHook();
+				boolean loggerAlreadyInitialized = SQLLogger.findInstance(absDb) != null;
+				initialize(deviceType, absDb, options);
+				loggerStartedByCall = !loggerAlreadyInitialized;
+
+				String deviceId = readDeviceUuidFromMetadata(absDb);
+				String deviceName = options.getDeviceName();
+				if (deviceName == null || deviceName.isEmpty()) {
+					deviceName = readDeviceNameFromMetadata(absDb, "");
+				}
+				Path perDeviceStage = (deviceName == null || deviceName.isEmpty())
+						? stageDir.resolve("synclite-" + deviceId)
+						: stageDir.resolve("synclite-" + deviceName + "-" + deviceId);
+				Files.createDirectories(perDeviceStage);
+
+				long devicePollingIntervalMs = Long.getLong(
+						"synclite.device.polling.interval.ms", 500L);
+				int destinationCount = checkedDestinations.size();
+				Path backup = perDeviceStage.resolve(
+						absDb.getFileName().toString() + ".synclite.backup");
+				Path metadata = perDeviceStage.resolve(
+						absDb.getFileName().toString() + ".synclite.metadata");
+
+				// Deliberately sequential: validate first, initialize the logger
+				// once, then fully start destination N before destination N + 1.
+				for (int offset = 0; offset < destinationCount; ++offset) {
+					int destinationIndex = offset + 1;
+					DestinationOptions destination = checkedDestinations.get(offset);
+					Path destinationWorkDir = destinationCount == 1
+							? workDir
+							: workDir.resolve("DB-" + destinationIndex);
+					Files.createDirectories(destinationWorkDir);
+
+					long handle = NativeConsolidator.nativeSpawnConsolidator(
+							absDb.toString(),
+							destinationWorkDir.toString(),
+							workDir.toString(),
+							deviceId,
+							deviceName == null ? "" : deviceName,
+							deviceType.name(),
+							databaseNameOf(absDb),
+							destination.dstType().name(),
+							destination.connectionString(),
+							destination.syncMode().name(),
+							destination.database().orElse(null),
+							destination.schema().orElse(null),
+							"DESTINATION",
+							perDeviceStage.toString(),
+							destinationIndex,
+							destinationCount,
+							devicePollingIntervalMs);
+					DestinationState destinationState = new DestinationState(
+							handle, destinationIndex);
+					destinationStates.add(destinationState);
+
+					if (Files.exists(backup) && Files.exists(metadata)) {
+						NativeConsolidator.nativeNotifyBootstrapReady(
+								handle, backup.toString(), metadata.toString());
+					}
+					NativeConsolidator.nativeCatchUpStageDir(
+							handle, perDeviceStage.toString());
+				}
+
+				DEVICES.put(absDb, new DeviceState(deviceType, destinationStates));
+				installShutdownHook();
+			} catch (Exception e) {
+				rollbackDestinationInitialization(destinationStates, absDb, loggerStartedByCall, e);
+				if (e instanceof SQLException) {
+					throw (SQLException) e;
+				}
+				throw new SQLException("failed to initialize destinations: " + e.getMessage(), e);
+			}
+		}
 	}
 
 	// ---------- helpers --------------------------------------------------
+
+	private static List<DestinationOptions> validatedDestinationCopy(
+			List<DestinationOptions> destinations) throws SQLException {
+		if (destinations == null) {
+			throw new SQLException("destinations must not be null");
+		}
+		if (destinations.isEmpty()) {
+			throw new SQLException("destinations must contain at least one destination");
+		}
+		List<DestinationOptions> copy = new ArrayList<>(destinations.size());
+		for (int i = 0; i < destinations.size(); ++i) {
+			DestinationOptions destination = destinations.get(i);
+			if (destination == null) {
+				throw new SQLException("destination " + (i + 1) + " must not be null");
+			}
+			String connectionString = destination.connectionString();
+			if (connectionString.trim().isEmpty()) {
+				throw new SQLException(
+						"destination " + (i + 1) + " connectionString must not be empty");
+			}
+			copy.add(destination);
+		}
+		return Collections.unmodifiableList(copy);
+	}
+
+	private static void rollbackDestinationInitialization(
+			List<DestinationState> destinationStates,
+			Path absDb,
+			boolean loggerStartedByCall,
+			Exception failure) {
+		for (int i = destinationStates.size() - 1; i >= 0; --i) {
+			try {
+				NativeConsolidator.nativeStopConsolidator(destinationStates.get(i).handle);
+			} catch (RuntimeException stopError) {
+				failure.addSuppressed(stopError);
+			}
+		}
+		if (loggerStartedByCall) {
+			try {
+				deleteSQLiteSchemaFileIfExists(absDb);
+				SQLLogger.closeDevice(absDb);
+			} catch (SQLException closeError) {
+				failure.addSuppressed(closeError);
+			}
+		}
+	}
 
 	/**
 	 * Make sure {@code options} has destination 1 pointed at a usable
@@ -1311,11 +1300,6 @@ public class SyncLite extends org.sqlite.JDBC {
 		}
 	}
 
-	private static void safeStopAndClose(long handle, Path absDb) {
-		try { NativeConsolidator.nativeStopConsolidator(handle); } catch (Exception ignore) {}
-		try { closeDevice(absDb); } catch (Exception ignore) {}
-	}
-
 	private static void installShutdownHook() {
 		if (!SHUTDOWN_HOOK_INSTALLED.compareAndSet(false, true)) {
 			return;
@@ -1335,27 +1319,21 @@ public class SyncLite extends org.sqlite.JDBC {
 	}
 
 	static final class DeviceState {
-		final long handle;
 		final DeviceType deviceType;
-		/** Destination snapshot — captured at initialize() so awaitSync can
-		 *  query the true source-of-truth (destination synclite_checkpoint)
-		 *  for POSTGRES targets instead of trusting the consolidator's
-		 *  local-mirror checkpoint. May be null for logger-only mode. */
-		final DstType dstType;
-		final String dstConnectionString;
-		final String dstSchema;
-		final String deviceId;
-		final String deviceName;
-		DeviceState(long handle, DeviceType deviceType,
-				DstType dstType, String dstConnectionString,
-				String dstSchema, String deviceId, String deviceName) {
-			this.handle = handle;
+		/** Ordered native destination workers. */
+		final List<DestinationState> destinations;
+		DeviceState(DeviceType deviceType, List<DestinationState> destinations) {
 			this.deviceType = deviceType;
-			this.dstType = dstType;
-			this.dstConnectionString = dstConnectionString;
-			this.dstSchema = dstSchema;
-			this.deviceId = deviceId;
-			this.deviceName = deviceName;
+			this.destinations = Collections.unmodifiableList(new ArrayList<>(destinations));
+		}
+	}
+
+	static final class DestinationState {
+		final long handle;
+		final int index;
+		DestinationState(long handle, int index) {
+			this.handle = handle;
+			this.index = index;
 		}
 	}
 

@@ -2,6 +2,36 @@
 
 > Part of the [SyncLite Platform](https://github.com/syncliteio/SyncLite) — Build Anything, Sync Anywhere.
 
+
+### Multiple destinations
+
+All existing `initialize(..., DestinationOptions)` overloads remain unchanged.
+For fan-out, every device facade also exposes matching
+`initialize(..., List<DestinationOptions>)` overloads:
+
+```java
+DestinationOptions destination1 = DestinationOptions.builder()
+    .dstType(DstType.POSTGRES)
+    .connectionString(POSTGRES_URL)
+    .database("syncdb")
+    .schema("public")
+    .build();
+DestinationOptions destination2 = DestinationOptions.builder()
+    .dstType(DstType.SQLITE)
+    .connectionString("orders-destination-2.db")
+    .build();
+
+SQLite.initialize(
+    DB_PATH, DEVICE_NAME, java.util.List.of(destination1, destination2));
+```
+
+The list must be non-empty, and list order defines stable one-based destination
+indexes. The full list is validated before side effects. The logger is started
+once, destination workers are started sequentially, and any later startup
+failure rolls back workers created by that call. `SyncLite.awaitSync(...)`
+passes the source commit target to the Rust logger in one JNI call. Rust waits
+until the minimum checkpoint across every destination reaches that target,
+using one shared timeout budget.
 ## What is SyncLite for Java?
 
 **SyncLite for Java** is an embeddable Java library (JDBC driver) that makes Java applications **sync-ready** with minimal code changes. It wraps popular embedded databases — SQLite, DuckDB, Apache Derby, H2, and HyperSQL — and transparently captures every SQL transaction into compact, binary log files. These log files are shipped in real time to a configured staging storage (local directory, SFTP, Amazon S3, MinIO, Apache Kafka, OneDrive, Google Drive, NFS, and more) and consolidated into the destination database, data warehouse, or data lake of your choice.
@@ -234,7 +264,7 @@ import java.time.Duration;
 
 public class SyncliteSqlitePostgresApp {
     private static final Path  DB_PATH        = Path.of("orders.db");
-    private static final String DEVICE_NAME   = "orders-device";
+    private static final String DEVICE_NAME   = "ordersdevice";
     private static final String POSTGRES_URL  = "jdbc:postgresql://localhost:5432/syncdb?user=postgres&password=postgres";
     private static final String POSTGRES_USER = "postgres";
     private static final String POSTGRES_PWD  = "postgres";
@@ -347,6 +377,8 @@ local-data-stage-directory=/var/lib/myapp/synclite-stage
 Destination wiring (`dst-type-1`, `dst-connection-string-1`, mappers, sync mode, Prometheus, etc.) goes in the same file when you're using the in-process consolidator. See the sample for the full key reference.
 
 ### 3. Initialize and use in Java
+
+> **Spring Boot + Hibernate:** see the complete [SQLite-to-PostgreSQL example](../SPRING_BOOT_HIBERNATE.md) for a lifecycle-managed `DataSource`, embedded PostgreSQL destination, entity, REST endpoint, and verification query.
 
 ```java
 import io.synclite.*;
@@ -556,6 +588,7 @@ Python samples live under [`synclite-code-samples/python/`](../synclite-code-sam
 ## Documentation & Community
 
 - Full documentation: https://github.com/syncliteio/SyncLite/blob/main/DOCUMENTATION.md
+- Spring Boot + Hibernate SQLite-to-PostgreSQL example: https://github.com/syncliteio/SyncLite/blob/main/SPRING_BOOT_HIBERNATE.md
 - SyncLite Logger configuration reference: https://github.com/syncliteio/SyncLite/blob/main/DOCUMENTATION.md
 - Community: https://github.com/syncliteio/SyncLite/issues
 - Website: https://www.synclite.io

@@ -141,4 +141,28 @@ public static synchronized final void initialize(java.nio.file.Path dbPath, java
 SyncLite.initialize(DeviceType.DERBY_STORE, dbPath, propsPath, deviceName, destination);
 }
 
+public static synchronized final void initialize(java.nio.file.Path dbPath, java.util.List<DestinationOptions> destinations) throws java.sql.SQLException {
+SyncLite.initialize(DeviceType.DERBY_STORE, dbPath, destinations);
+}
+
+public static synchronized final void initialize(java.nio.file.Path dbPath, String deviceName, java.util.List<DestinationOptions> destinations) throws java.sql.SQLException {
+SyncLite.initialize(DeviceType.DERBY_STORE, dbPath, deviceName, destinations);
+}
+
+public static synchronized final void initialize(java.nio.file.Path dbPath, SyncLiteOptions options, java.util.List<DestinationOptions> destinations) throws java.sql.SQLException {
+SyncLite.initialize(DeviceType.DERBY_STORE, dbPath, options, destinations);
+}
+
+public static synchronized final void initialize(java.nio.file.Path dbPath, SyncLiteOptions options, String deviceName, java.util.List<DestinationOptions> destinations) throws java.sql.SQLException {
+SyncLite.initialize(DeviceType.DERBY_STORE, dbPath, options, deviceName, destinations);
+}
+
+public static synchronized final void initialize(java.nio.file.Path dbPath, java.nio.file.Path propsPath, java.util.List<DestinationOptions> destinations) throws java.sql.SQLException {
+SyncLite.initialize(DeviceType.DERBY_STORE, dbPath, propsPath, destinations);
+}
+
+public static synchronized final void initialize(java.nio.file.Path dbPath, java.nio.file.Path propsPath, String deviceName, java.util.List<DestinationOptions> destinations) throws java.sql.SQLException {
+SyncLite.initialize(DeviceType.DERBY_STORE, dbPath, propsPath, deviceName, destinations);
+}
+
 }
