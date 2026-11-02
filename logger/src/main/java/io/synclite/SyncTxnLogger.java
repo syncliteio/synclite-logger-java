@@ -196,10 +196,11 @@ public final class SyncTxnLogger extends TxnLogger {
 
 	@Override
 	protected void startLogging() {
-		long intervalMs = options.getLogSegmentSwitchDurationThresholdMs();
-		if (intervalMs <= 0) {
-			intervalMs = 1000;
-		}
+		// Check frequently even when the age threshold is large. Scheduling the
+		// first check at the threshold (and using a strict > comparison) can
+		// leave an idle committed segment open for nearly twice that duration.
+		long thresholdMs = options.getLogSegmentSwitchDurationThresholdMs();
+		long intervalMs = thresholdMs <= 0 ? 1000 : Math.min(thresholdMs, 1000);
 		this.idleSegmentSwitchService = Executors.newSingleThreadScheduledExecutor(r -> {
 			Thread t = new Thread(r, "synclite-idle-segment-switch-" + dbName);
 			t.setDaemon(true);

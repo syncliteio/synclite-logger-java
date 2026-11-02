@@ -50,7 +50,10 @@ class MultiDestinationInitializationIntegrationTest {
         Files.writeString(config,
                 "local-data-stage-directory = " + normalized(stageDir) + "\n"
                         + "device-stage-type = FS\n"
-                        + "device-data-root = " + normalized(workDir) + "\n");
+                + "device-data-root = " + normalized(workDir) + "\n"
+                // This test exercises destination isolation, not the
+                // default five-second idle-segment rollover latency.
+                + "log-segment-switch-duration-threshold-ms = 500\n");
 
         DestinationOptions first = sqliteDestination(firstDb);
         DestinationOptions second = sqliteDestination(secondDb);

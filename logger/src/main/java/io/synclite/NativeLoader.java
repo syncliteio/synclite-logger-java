@@ -73,19 +73,12 @@ final class NativeLoader {
         String classifier = detectClassifier();
         String jniBase = "libsynclite_" + revision + "_jni";
         String jniName = osFileName(jniBase);
-        // duckdb's import name varies by OS (cargo / duckdb-rs uses
-        // duckdb.dll on Windows but libduckdb.{so,dylib} on Linux/macOS).
-        // The synclite_jni binary's import table references that exact
-        // name, so keep it OS-natural.
         String duckdbName = osDuckdbName();
         String jniResource = "META-INF/native/" + classifier + "/" + jniName;
         String duckdbResource = "META-INF/native/" + classifier + "/" + duckdbName;
 
         Path extractedJni = extractIfPresent(jniResource, jniName);
         if (extractedJni != null) {
-            // synclite_jni dynamically links to libduckdb. Extract it into
-            // the same temp dir and System.load() it FIRST so the OS loader
-            // can satisfy the dependency before we try to load synclite_jni.
             Path tmpDir = extractedJni.getParent();
             Path extractedDuckdb = extractIfPresent(duckdbResource, duckdbName, tmpDir);
             if (extractedDuckdb != null) {
@@ -187,12 +180,6 @@ final class NativeLoader {
         return baseWithLibPrefix + ".so";
     }
 
-    /**
-     * duckdb's prebuilt zips ship {@code duckdb.dll} on Windows but
-     * {@code libduckdb.{so,dylib}} on Linux/macOS. {@code synclite_jni}'s
-     * import table references that exact name on each platform, so we must
-     * extract the file under its OS-natural name (no rename).
-     */
     private static String osDuckdbName() {
         String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
         if (os.contains("win")) {
@@ -203,4 +190,5 @@ final class NativeLoader {
         }
         return "libduckdb.so";
     }
+
 }

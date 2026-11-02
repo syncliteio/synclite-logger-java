@@ -108,7 +108,11 @@ final class AsyncTxnLogger extends TxnLogger {
 		currentBatchLogCount = 0;
 		while (!Thread.interrupted()) {
 			try {
-				CommandLogRecord record= logQueue.poll(options.getLogSegmentSwitchDurationThresholdMs(), TimeUnit.MILLISECONDS);
+				// Check idle segments at least once a second. Polling only at
+				// the age threshold can postpone rollover by a second full
+				// threshold when a segment is opened near the previous poll.
+				long pollIntervalMs = Math.min(options.getLogSegmentSwitchDurationThresholdMs(), 1000L);
+				CommandLogRecord record = logQueue.poll(pollIntervalMs, TimeUnit.MILLISECONDS);
 				if (record == null) {
 					checkups();
 					continue;
