@@ -84,8 +84,10 @@ public final class DuckDB extends SyncLite {
 		try {
     		Class.forName("org.duckdb.DuckDBDriver");
 		} catch (ClassNotFoundException e) {
-			tracer.error("Failed to load DuckDB jdbc driver : " + e.getMessage());
-			throw new SQLException("Failed to load DuckDB jdbc driver");
+			String message = "DuckDB device support requires org.duckdb:duckdb_jdbc "
+					+ "on the application classpath. Add dependency org.duckdb:duckdb_jdbc:1.5.2.0.";
+			tracer.error(message, e);
+			throw new SQLException(message, e);
 		}    	
 	}
 

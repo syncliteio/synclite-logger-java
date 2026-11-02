@@ -323,42 +323,39 @@
 									</fileset>
 									<mapper type="merge" to="libsynclite_${revision}_jni.dylib"/>
 								</copy>
-								<!--
-									duckdb: prebuilt shared lib downloaded by the duckdb-rs build
-									script into target/duckdb-download/<triple>/<version>/. synclite_jni
-									dynamically links against it, so we ship it alongside and the
-									Java NativeLoader extracts + System.load()s it before synclite_jni.
-								-->
+								<!-- synclite_jni dynamically links to DuckDB. Package the native
+								     sidecar beside JNI so SQLite and DuckDB devices can load the
+								     unchanged Rust runtime from the self-contained release JAR. -->
 								<copy todir="${project.build.outputDirectory}/META-INF/native/windows-x64"
-									  failonerror="false" quiet="true">
+										  failonerror="false" quiet="true">
 									<fileset dir="${synclite.rust.target.dir}" erroronmissingdir="false">
 										<include name="duckdb-download/x86_64-pc-windows-msvc/*/duckdb.dll"/>
 									</fileset>
 									<mapper type="merge" to="duckdb.dll"/>
 								</copy>
 								<copy todir="${project.build.outputDirectory}/META-INF/native/linux-x64"
-									  failonerror="false" quiet="true">
+										  failonerror="false" quiet="true">
 									<fileset dir="${synclite.rust.target.dir}" erroronmissingdir="false">
 										<include name="duckdb-download/x86_64-unknown-linux-gnu/*/libduckdb.so"/>
 									</fileset>
 									<mapper type="merge" to="libduckdb.so"/>
 								</copy>
 								<copy todir="${project.build.outputDirectory}/META-INF/native/linux-arm64"
-									  failonerror="false" quiet="true">
+										  failonerror="false" quiet="true">
 									<fileset dir="${synclite.rust.target.dir}" erroronmissingdir="false">
 										<include name="duckdb-download/aarch64-unknown-linux-gnu/*/libduckdb.so"/>
 									</fileset>
 									<mapper type="merge" to="libduckdb.so"/>
 								</copy>
 								<copy todir="${project.build.outputDirectory}/META-INF/native/macos-x64"
-									  failonerror="false" quiet="true">
+										  failonerror="false" quiet="true">
 									<fileset dir="${synclite.rust.target.dir}" erroronmissingdir="false">
 										<include name="duckdb-download/x86_64-apple-darwin/*/libduckdb.dylib"/>
 									</fileset>
 									<mapper type="merge" to="libduckdb.dylib"/>
 								</copy>
 								<copy todir="${project.build.outputDirectory}/META-INF/native/macos-arm64"
-									  failonerror="false" quiet="true">
+										  failonerror="false" quiet="true">
 									<fileset dir="${synclite.rust.target.dir}" erroronmissingdir="false">
 										<include name="duckdb-download/aarch64-apple-darwin/*/libduckdb.dylib"/>
 									</fileset>
