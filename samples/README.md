@@ -45,19 +45,19 @@ consolidator, so you can mix device families inside one application.
 Compile against the built logger jar:
 
 ```
-javac -cp ..\logger\target\synclite-1.0.0.jar *.java
+javac -cp ..\logger\target\synclite-1.2.0.jar *.java
 ```
 
 Run any sample (example):
 
 ```
-java -cp ..\logger\target\synclite-1.0.0.jar;. SyncliteDeviceApp
+java -cp ..\logger\target\synclite-1.2.0.jar;. SyncliteDeviceApp
 ```
 
-`SyncliteSqlitePostgresApp` uses the in-process consolidator, but the same `synclite-1.0.0.jar` above already bundles it — nothing extra to add on the classpath:
+`SyncliteSqlitePostgresApp` uses the in-process consolidator, but the same `synclite-1.2.0.jar` above already bundles it — nothing extra to add on the classpath:
 
 ```
-java -cp ..\logger\target\synclite-1.0.0.jar;. SyncliteSqlitePostgresApp
+java -cp ..\logger\target\synclite-1.2.0.jar;. SyncliteSqlitePostgresApp
 ```
 
 Notes:

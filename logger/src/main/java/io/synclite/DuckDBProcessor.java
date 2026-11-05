@@ -19,6 +19,7 @@ package io.synclite;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -34,6 +35,14 @@ public class DuckDBProcessor extends MultiWriterDBProcessor {
 	@Override
 	protected HashMap<Integer, Column> getSrcTableInfo(String tableName, Connection conn) throws SQLException {
 		HashMap<Integer, Column> cols = new HashMap<Integer, Column>();
+		try (PreparedStatement lookup = conn.prepareStatement("SELECT 1 FROM information_schema.tables WHERE lower(table_name) = lower(?) LIMIT 1")) {
+			lookup.setString(1, tableName);
+			try (ResultSet tables = lookup.executeQuery()) {
+				if (!tables.next()) {
+					return cols;
+				}
+			}
+		}
 		try (Statement stmt = conn.createStatement()) {
 			int colIndex = 0;
 			try (ResultSet tableSchema = stmt.executeQuery("PRAGMA table_info(" + tableName + ")")) {
@@ -48,10 +57,6 @@ public class DuckDBProcessor extends MultiWriterDBProcessor {
 					Column c = new Column(columnName, type, defaultValue, isNullable, primaryKey);
 					cols.put(colIndex, c);
 					++colIndex;
-				}
-			} catch (SQLException e) {
-				if (!e.getMessage().contains("does not exist")) {
-					throw e;
 				}
 			}
 		}

@@ -92,6 +92,31 @@ class DuckDBTransactionalTest {
     }
 
     @Test
+    void testMissingTableMetadataPreservesTransaction() throws SQLException {
+        DuckDBProcessor processor = new DuckDBProcessor();
+        try (Connection conn = DriverManager.getConnection("jdbc:duckdb:" + testDbPath);
+             Statement stmt = conn.createStatement()) {
+            conn.setAutoCommit(false);
+            stmt.execute("CREATE TABLE pending_rows (id INTEGER)");
+            stmt.execute("INSERT INTO pending_rows VALUES (42)");
+
+            assertTrue(processor.getSrcTableInfo("new_table", conn).isEmpty());
+            stmt.execute("CREATE TABLE new_table (id INTEGER PRIMARY KEY)");
+            assertEquals(1, processor.getSrcTableInfo("NEW_TABLE", conn).size());
+
+            stmt.execute("DROP TABLE new_table");
+            assertTrue(processor.getSrcTableInfo("NEW_TABLE", conn).isEmpty());
+            conn.commit();
+
+            try (ResultSet rows = stmt.executeQuery("SELECT id FROM pending_rows")) {
+                assertTrue(rows.next());
+                assertEquals(42, rows.getInt(1));
+                assertFalse(rows.next());
+            }
+        }
+    }
+
+    @Test
     void testBasicTableOperations() throws SQLException, IOException {
         DuckDB.initialize(testDbPath, testConfigPath, "duckdbtransactional");
 

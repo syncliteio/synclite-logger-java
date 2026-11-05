@@ -378,6 +378,22 @@ class JedisTest {
                 assertEquals(1, rows.size());
                 long expiresAt = ((Number) rows.get(0).get("expires_at")).longValue();
                 assertTrue(expiresAt > System.currentTimeMillis(), "expires_at should be in the future for EX param");
+
+                long beforePx = System.currentTimeMillis();
+                jedis.set("sp:px", "value", redis.clients.jedis.params.SetParams.setParams().px(3_600_000L));
+                long pxExpiry = ((Number) store.select(Jedis.STRINGS_TABLE, Map.of("key", "sp:px")).get(0).get("expires_at")).longValue();
+                assertTrue(pxExpiry >= beforePx + 3_600_000L);
+                assertTrue(pxExpiry <= System.currentTimeMillis() + 3_600_000L);
+
+                long absoluteSeconds = System.currentTimeMillis() / 1000L + 3600L;
+                jedis.set("sp:exat", "value", redis.clients.jedis.params.SetParams.setParams().exAt(absoluteSeconds));
+                assertEquals(absoluteSeconds * 1000L,
+                    ((Number) store.select(Jedis.STRINGS_TABLE, Map.of("key", "sp:exat")).get(0).get("expires_at")).longValue());
+
+                long absoluteMillis = System.currentTimeMillis() + 3_600_000L;
+                jedis.set("sp:pxat", "value", redis.clients.jedis.params.SetParams.setParams().pxAt(absoluteMillis));
+                assertEquals(absoluteMillis,
+                    ((Number) store.select(Jedis.STRINGS_TABLE, Map.of("key", "sp:pxat")).get(0).get("expires_at")).longValue());
             }
 
             // –– testPexpire –––––––––––––––––––––––––––––––––––––––––––––––––––
