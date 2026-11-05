@@ -185,7 +185,7 @@ public class MinioArchiver extends FSArchiver {
 			PutObjectArgs putObjArgs = PutObjectArgs.builder()
 					.bucket(dataStageBucketName)
 					.object(writeArchiveName + "/")
-					.stream(new ByteArrayInputStream(new byte[0]), 0, -1)
+					.stream(new ByteArrayInputStream(new byte[0]), 0L, -1L)
 					.build();     	    		
 
 			minioClient.putObject(putObjArgs);

@@ -1647,22 +1647,24 @@ public class Jedis extends redis.clients.jedis.Jedis {
 
     private static long resolveSetParamsExpiry(SetParams params) {
         if (params == null) return 0L;
-        try {
-            // SetParams stores values under the Redis keyword keys (ex, px, exat, pxat).
-            // The inherited getParam(String) method retrieves them directly, avoiding
-            // any dependency on toString() format which varies across Jedis versions.
-            Object pxat = params.getParam("pxat");
-            if (pxat != null) return toLong(pxat);
-
-            Object exat = params.getParam("exat");
-            if (exat != null) return toLong(exat) * 1_000L;
-
-            Object px = params.getParam("px");
-            if (px != null) return System.currentTimeMillis() + toLong(px);
-
-            Object ex = params.getParam("ex");
-            if (ex != null) return System.currentTimeMillis() + toLong(ex) * 1_000L;
-        } catch (Exception ignored) {}
+        redis.clients.jedis.CommandArguments arguments = new redis.clients.jedis.CommandArguments(
+                redis.clients.jedis.Protocol.Command.SET);
+        params.addParams(arguments);
+        java.util.Iterator<redis.clients.jedis.args.Rawable> iterator = arguments.iterator();
+        while (iterator.hasNext()) {
+            String keyword = new String(iterator.next().getRaw(), java.nio.charset.StandardCharsets.US_ASCII);
+            if ((keyword.equals("PXAT") || keyword.equals("EXAT") || keyword.equals("PX") || keyword.equals("EX"))
+                    && iterator.hasNext()) {
+                long expiry = Long.parseLong(new String(iterator.next().getRaw(), java.nio.charset.StandardCharsets.US_ASCII));
+                switch (keyword) {
+                    case "PXAT": return expiry;
+                    case "EXAT": return expiry * 1_000L;
+                    case "PX": return System.currentTimeMillis() + expiry;
+                    case "EX": return System.currentTimeMillis() + expiry * 1_000L;
+                    default: break;
+                }
+            }
+        }
         return 0L;
     }
 }

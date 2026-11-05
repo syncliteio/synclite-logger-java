@@ -25,19 +25,12 @@ import java.util.List;
 
 import org.apache.log4j.Logger;
 
-import com.amazonaws.auth.AWSCredentials;
-import com.amazonaws.auth.AWSStaticCredentialsProvider;
-import com.amazonaws.auth.BasicAWSCredentials;
-import com.amazonaws.client.builder.AwsClientBuilder.EndpointConfiguration;
-import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.AmazonS3ClientBuilder;
-import com.amazonaws.services.s3.model.AmazonS3Exception;
-import com.amazonaws.services.s3.model.ListObjectsV2Result;
-import com.amazonaws.services.s3.model.ObjectMetadata;
-import com.amazonaws.services.s3.model.S3Object;
-import com.amazonaws.services.s3.model.S3ObjectInputStream;
-import com.amazonaws.services.s3.model.S3ObjectSummary;
-import com.amazonaws.util.AwsHostNameUtils;
+import software.amazon.awssdk.core.ResponseInputStream;
+import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
+import software.amazon.awssdk.services.s3.model.S3Exception;
+import software.amazon.awssdk.services.s3.model.S3Object;
 
 
 public class S3Archiver extends FSArchiver {
@@ -49,7 +42,7 @@ public class S3Archiver extends FSArchiver {
 	private String accessKey;
 	private String secretKey;
 
-	AmazonS3 s3Client;
+	S3Client s3Client;
 
 	S3Archiver(Path dbPath, String writeArchiveName, Path writeArchivePath, String readArchiveName, Path readArchivePath, String endPoint, String accessKey, String secretKey, String remoteDataDirectory, String remoteCommandDirectory, Logger tracer, Path encryptionKeyPath) {
 		super(dbPath, writeArchiveName, writeArchivePath, readArchiveName, readArchivePath, tracer, encryptionKeyPath);
@@ -64,11 +57,7 @@ public class S3Archiver extends FSArchiver {
 
 	private final void connect() {
 		try {
-			AWSCredentials credentials = new BasicAWSCredentials(this.accessKey, this.secretKey);
-			s3Client = AmazonS3ClientBuilder.standard()
-					.withCredentials(new AWSStaticCredentialsProvider(credentials))
-					.withEndpointConfiguration(new EndpointConfiguration (this.endPoint, AwsHostNameUtils.parseRegion(endPoint, null)))
-					.build();
+			s3Client = S3ClientFactory.create(this.endPoint, this.accessKey, this.secretKey);
 
 		} catch (Exception e) {
 			tracer.error("Failed to create MinIO client : ", e);
@@ -159,10 +148,10 @@ public class S3Archiver extends FSArchiver {
 				}
 				createWriteArchiveIfNotExists();
 				try {
-					s3Client.putObject(dataStageBucketName, writeArchiveName + "/" + targetArtifactName, localTargetPath.toFile());
-				} catch (AmazonS3Exception e) {
+					s3Client.putObject(request -> request.bucket(dataStageBucketName).key(writeArchiveName + "/" + targetArtifactName), RequestBody.fromFile(localTargetPath));
+				} catch (S3Exception e) {
 					//If object already exists (uploaded earlier perhaps prior to a crash) then move on.
-					if (e.getStatusCode() != 409) {
+					if (e.statusCode() != 409) {
 						throw e;
 					}
 				}
@@ -194,9 +183,9 @@ public class S3Archiver extends FSArchiver {
 				createWriteArchiveIfNotExists();
 				try {
 					//If object already exists (uploaded earlier perhaps prior to a crash) then move on.
-					s3Client.putObject(dataStageBucketName, writeArchiveName + "/" + targetArtifactName, localTargetPath.toFile());
-				} catch (AmazonS3Exception e) {
-					if (e.getStatusCode() != 409) {
+					s3Client.putObject(request -> request.bucket(dataStageBucketName).key(writeArchiveName + "/" + targetArtifactName), RequestBody.fromFile(localTargetPath));
+				} catch (S3Exception e) {
+					if (e.statusCode() != 409) {
 						throw e;
 					}
 				}
@@ -220,10 +209,10 @@ public class S3Archiver extends FSArchiver {
 		}
 		super.createWriteArchiveIfNotExists();
 		try {
-			s3Client.putObject(dataStageBucketName, writeArchiveName + "/", new ByteArrayInputStream(new byte[0]), new ObjectMetadata());
+			s3Client.putObject(request -> request.bucket(dataStageBucketName).key(writeArchiveName + "/"), RequestBody.empty());
 			this.remoteWriteArchiveCreated = true;
-		} catch (AmazonS3Exception e) {
-			if (e.getStatusCode() == 409) {
+		} catch (S3Exception e) {
+			if (e.statusCode() == 409) {
 				this.remoteWriteArchiveCreated = true;
 			} else {
 				throw new RemoteShippingException("Failed to create remote write archive with exception : ", e);
@@ -237,14 +226,11 @@ public class S3Archiver extends FSArchiver {
 	List<Path> getObjectsInReadArchive() throws SQLException {    	
 		try {
 			//List<String> commandFiles = new ArrayList<String>();
-			ListObjectsV2Result result = s3Client.listObjectsV2 (commandStageBucketName, readArchiveName + "/");
-			for (S3ObjectSummary objectSummary : result.getObjectSummaries()) {
+			for (S3Object objectSummary : s3Client.listObjectsV2Paginator(request -> request.bucket(commandStageBucketName).prefix(readArchiveName + "/")).contents()) {
 
-				S3Object s3Object = s3Client.getObject(commandStageBucketName, objectSummary.getKey());
+				String dstFilePath = readArchivePath.resolve(objectSummary.key()).toString();
 
-				String dstFilePath = readArchivePath.resolve(objectSummary.getKey()).toString();
-
-				try (S3ObjectInputStream objectInputStream = s3Object.getObjectContent();
+				try (ResponseInputStream<GetObjectResponse> objectInputStream = s3Client.getObject(request -> request.bucket(commandStageBucketName).key(objectSummary.key()));
 						OutputStream outputStream = new FileOutputStream(dstFilePath.toString())) {
 					byte[] buffer = new byte[1024];
 					int bytesRead;
@@ -264,6 +250,8 @@ public class S3Archiver extends FSArchiver {
 
 	@Override
 	void terminate() {		
-		//Nothing to do here.
+		if (s3Client != null) {
+			s3Client.close();
+		}
 	}
 }
