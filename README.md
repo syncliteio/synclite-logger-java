@@ -378,7 +378,7 @@ Destination wiring (`dst-type-1`, `dst-connection-string-1`, mappers, sync mode,
 
 ### 3. Initialize and use in Java
 
-> **Spring Boot + Hibernate:** see the complete [SQLite-to-PostgreSQL example](../SPRING_BOOT_HIBERNATE.md) for a lifecycle-managed `DataSource`, embedded PostgreSQL destination, entity, REST endpoint, and verification query.
+> **Spring Boot + Hibernate:** see the complete [SQLite-to-PostgreSQL example](../DOCUMENTATION.md#spring-boot-and-hibernate) for a lifecycle-managed `DataSource`, embedded PostgreSQL destination, entity, REST endpoint, and verification query.
 
 ```java
 import io.synclite.*;
@@ -588,7 +588,7 @@ Python samples live under [`synclite-code-samples/python/`](../synclite-code-sam
 ## Documentation & Community
 
 - Full documentation: https://github.com/syncliteio/SyncLite/blob/main/DOCUMENTATION.md
-- Spring Boot + Hibernate SQLite-to-PostgreSQL example: https://github.com/syncliteio/SyncLite/blob/main/SPRING_BOOT_HIBERNATE.md
+- Spring Boot + Hibernate SQLite-to-PostgreSQL example: https://github.com/syncliteio/SyncLite/blob/main/DOCUMENTATION.md#spring-boot-and-hibernate
 - SyncLite Logger configuration reference: https://github.com/syncliteio/SyncLite/blob/main/DOCUMENTATION.md
 - Community: https://github.com/syncliteio/SyncLite/issues
 - Website: https://www.synclite.io
