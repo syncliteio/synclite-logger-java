@@ -1,0 +1,6 @@
+
+# Keep shell scripts LF on Linux/Windows
+*.sh text eol=lf
+*.bash text eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
